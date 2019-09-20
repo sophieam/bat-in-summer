@@ -4,7 +4,7 @@
 x_max = 2.4          # g
 
 # Discretizised values of x.
-x_discrete <- seq(from = 0, to = x_max, by = 0.0025)
+x_discrete <- seq(from = 0, to = x_max, by = 0.05)
   
 # Basic daily predation risk patch 1/2.
 mu <- c(0, 0.001, 0.005) # /day
