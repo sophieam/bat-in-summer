@@ -40,34 +40,45 @@ H <- 1:3
 X <- matrix(NA, nrow=Time, ncol=Days)
 
 # F(x, t, d) - Fitness (probability of survival)
-Fitness <- array(data = NA, dim = c(length(x_discreet), Time, Days), dimnames = NULL)
+Fitness <- array(data = NA, dim = c(length(x_discreet), Time+1, Days), dimnames = NULL)
 
 
 # Survival last night.
-for (t in Time:1) {
-  for (j in 1:length(x_discreet)) {
-    if (x_discreet[j] < c_g) {
-      Fitness[j, t, Days] <- 0
-    } else if ( (x_discreet[j] > c_g) & (x_discreet[j] < c_b) ) {
-      Fitness[j, t, Days] <- 1 - p_b
-    } else {
-      Fitness[j, t, Days] <- 1
-    }
-  }
+
+
+cap <- function(minimum, maximum, avalue) {
+  if (avalue < minimum) {
+    return(minimum)
+  } else if (avalue > maximum) {
+    return(maximum)
+  } else
+    return(avalue)
 }
-  
+
+browser()
 # Other times.
-for (d in (Days-1):1) {
-  for (t in (Time:1)) {
+for (d in Days:1) {
+  for (t in (Time+1):1) {
     for (j in (1:length(x_discreet))) {
-      F_i <- vector(mode = 'numeric', length=3)
-      
-      for (h in H) {
-        x_mark <- x_discreet[j] + (1/Time)*e[h] - gamma * (1/Time)*(m_0 + x_discreet[h])
-        F_i[h] <- ( 1 - (1/Time)*(mu[h] + lambda*x_discreet[j]))*(Fitness[which(abs(x_discreet-x_mark)==min(abs(x_discreet-x_mark))), t +1, d] ) 
+      if ( (d == Days) & (t == Time+1) ) {
+        if (x_discreet[j] < c_g) {
+          Fitness[j, Time +1, Days] <- 0
+        } else if ( (x_discreet[j] > c_g) & (x_discreet[j] < c_b) ) {
+          Fitness[j, Time +1, Days] <- 1 - p_b
+        } else {
+          Fitness[j, Time +1, Days] <- 1
+        }
+      } else if (t <= Time) {
+        F_i <- vector(mode = 'numeric', length=3)
+        
+        for (h in H) {
+          x_mark <- cap( 0, x_max, x_discreet[j] + (1/Time)*e[h] - gamma * (1/Time)*(m_0 + x_discreet[h]) )
+          F_i[h] <- ( 1 - (1/Time)*(mu[h] + lambda*x_discreet[j]))*(Fitness[which(abs(x_discreet-x_mark)==min(abs(x_discreet-x_mark))), t +1, d] ) 
+        }
+        
+        Fitness[j, t, d] <- max(F_i)
       }
       
-      Fitness[j, t, d] <- max(F_i)
     }
   }
 }
