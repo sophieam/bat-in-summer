@@ -72,6 +72,19 @@ for (j in 1:length(x_discrete)) {
   }
 }
 
+interpolate <- function (x, t, d) {
+  closest <- closest_discrete_x(x)
+  
+  if (x < closest) {
+    j1 <- closest -1
+    j2 <- closest
+  } else {
+    j1 <- closest
+    j2 <- closest +1
+  }
+
+  return(Fitness[j1, t, d] + ( (x_discrete-x_discrete[j2])/(x_discrete[j2]-x_discrete[j1]) )*(Fitness[j2, t, d] - Fitness[j1, t, d]) )
+}
 
 for (d in Days:1) {
   for (t in (Time+1):1) {
@@ -99,3 +112,6 @@ for (d in Days:1) {
     }
   }
 }
+
+View(Fitness[,,Days-1])
+View(Decision[,,Days-1])
