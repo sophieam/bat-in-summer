@@ -34,7 +34,7 @@ Time = 50
 Days = 120
 
 # Possible actions at each time unit (i.e. patch choice):
-H <- 0:3
+H <- 1:3
 
 # X(t, d) - Energy reserves at beginning of period t on day d (g)
 X <- matrix(NA, nrow=Time, ncol=Days)
@@ -60,14 +60,14 @@ for (t in Time:1) {
 for (d in (Days-1):1) {
   for (t in (Time:1)) {
     for (j in (1:length(x_discreet))) {
-      Fitness[j, t, d] <- max(
-      )
+      F_i <- vector(mode = 'numeric', length=3)
+      
+      for (h in H) {
+        x_mark <- x_discreet[j] + (1/Time)*e[h] - gamma * (1/Time)*(m_0 + x_discreet[h])
+        F_i[h] <- ( 1 - (1/Time)*(mu[h] + lambda*x_discreet[j]))*(Fitness[which(abs(x_discreet-x_mark)==min(abs(x_discreet-x_mark))), t +1, d] ) 
+      }
+      
+      Fitness[j, t, d] <- max(F_i)
     }
   }
-}
-
-
-
-dynamic(currentState, action) {
-  
 }
