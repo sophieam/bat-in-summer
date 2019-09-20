@@ -40,10 +40,16 @@ H <- 1:3
 X <- matrix(NA, nrow=Time, ncol=Days)
 
 # F(x, t, d) - Fitness (probability of survival)
-Fitness <- array(data = NA, dim = c(length(x_discrete), Time+1, Days), dimnames = NULL)
+Fitness <- array(data = NA, dim = c(length(x_discrete), Time+1, Days), dimnames = list(
+                                                                                    x_discrete,
+                                                                                    1:(Time+1),
+                                                                                    1:Days) )
 
 # Optimal decision given time and state: 
-Decision <- array(data = 0L, dim = c(length(x_discrete), Time, Days), dimnames = NULL)
+Decision <- array(data = 0L, dim = c(length(x_discrete), Time, Days), dimnames = list(
+                                                                                    x_discrete,
+                                                                                    1:Time,
+                                                                                    1:Days))
 
 
 
@@ -72,10 +78,14 @@ for (j in 1:length(x_discrete)) {
   }
 }
 
+linear_interpolation <- function (a, b, dx) {
+  return((1-dx)*a+ b*dx)
+}
+
 interpolate <- function (x, t, d) {
   closest <- closest_discrete_x(x)
   
-  if (x < closest) {
+  if (x < x_discrete[closest]) {
     j1 <- closest -1
     j2 <- closest
   } else {
@@ -83,29 +93,31 @@ interpolate <- function (x, t, d) {
     j2 <- closest +1
   }
 
-  return(Fitness[j1, t, d] + ( (x_discrete-x_discrete[j2])/(x_discrete[j2]-x_discrete[j1]) )*(Fitness[j2, t, d] - Fitness[j1, t, d]) )
+  delta_x <- (x-x_discrete[j1])/(x_discrete[j2]-x_discrete[j1])
+  
+  return(linear_interpolation(x_discrete[j1], x_discrete[j2], delta_x))
 }
 
 for (d in Days:1) {
   for (t in (Time+1):1) {
     for (j in (1:length(x_discrete))) {
       if ( (t == Time +1) & (d < Days) ) {
-        if (x_discrete[j] < c_g) { # Not enough to survive good night.
+        if (x_discrete[j] < c_g) {           # Not enough to survive good night.
           Fitness[j, t, d] <- 0
-        } else if (x_discrete[j] < c_b) { # Not enough to survive bad night.
-          Fitness[j, t, d] <- (1-p_b)* Fitness[closest_discrete_x(x_discrete[j]-c_g), 1, d +1]
-        } else { 
-          Fitness[j, t, d] <- (1-p_b)* Fitness[closest_discrete_x(x_discrete[j]-c_g), 1, d +1] + p_b*Fitness[closest_discrete_x(x_discrete[j] - c_b), 1, d +1]
+        } else if (x_discrete[j] < c_b) {    # Not enough to survive bad night.
+          Fitness[j, t, d] <- (1-p_b)* interpolate(x_discrete[j]-c_g, 1, d +1)
+        } else {                             # Survive both.
+          Fitness[j, t, d] <- (1-p_b)* interpolate(x_discrete[j]-c_g, 1, d +1) + p_b*interpolate(x_discrete[j] - c_b, 1, d +1)
         }
       } else if (t <= Time) {
         F_i <- vector(mode = 'numeric', length=3)
         
         for (h in H) {
-          x_mark <- cap( 0, x_max, x_discrete[j] + (1/Time)*e[h] - gamma * (1/Time)*(m_0 + x_discrete[h]) )
-          F_i[h] <- ( 1 - (1/Time)*(mu[h] + lambda*x_discrete[j]))*(Fitness[closest_discrete_x(x_mark), t +1, d] ) 
+          x_mark <- cap( 0, x_max, x_discrete[j] + (1/Time)*e[h] - gamma * (1/Time)*(m_0 + x_discrete[j]) )
+          F_i[h] <- ( 1 - (1/Time)*(mu[h] + lambda*x_discrete[j]))*(interpolate(x_mark, t +1, d) )
         }
         
-        Fitness[j, t, d] <- max(F_i)
+        Fitness[j, t, d]  <- max(F_i)
         Decision[j, t, d] <- which(F_i == max(F_i))[1]
       }
       
@@ -113,5 +125,5 @@ for (d in Days:1) {
   }
 }
 
-View(Fitness[,,Days-1])
-View(Decision[,,Days-1])
+View(Fitness[,,Days])
+View(Decision[,,Days])
