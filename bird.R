@@ -4,8 +4,8 @@
 x_max = 2.4          # g
 
 # Discretizised values of x.
-x_discrete <- seq(from = 0, to = x_max, by = 0.05)
-  
+x_d <- seq(from = 0, to = x_max, length.out=100)
+
 # Basic daily predation risk patch 1/2.
 mu <- c(0, 0.001, 0.005) # /day
 
@@ -33,27 +33,20 @@ Time = 50
 # Days
 Days = 120
 
-# Possible actions at each time unit (i.e. patch choice):
-H <- 1:3
-
-# X(t, d) - Energy reserves at beginning of period t on day d (g)
-X <- matrix(NA, nrow=Time, ncol=Days)
-
 # F(x, t, d) - Fitness (probability of survival)
-Fitness <- array(data = NA, dim = c(length(x_discrete), Time+1, Days), dimnames = list(
-                                                                                    x_discrete,
-                                                                                    1:(Time+1),
-                                                                                    1:Days) )
+Fitness <- array(data = NA, dim = c(length(x_d), Time+1, Days), dimnames = list(
+  x_d,
+  1:(Time+1),
+  1:Days) )
 
 # Optimal decision given time and state: 
-Decision <- array(data = 0L, dim = c(length(x_discrete), Time, Days), dimnames = list(
-                                                                                    x_discrete,
-                                                                                    1:Time,
-                                                                                    1:Days))
+Decision <- array(data = 0L, dim = c(length(x_d), Time, Days), dimnames = list(
+  x_d,
+  1:Time,
+  1:Days))
 
 
-
-
+# Ensure that a value is between a minimum and a maximum.
 cap <- function(minimum, maximum, avalue) {
   if (avalue < minimum) {
     return(minimum)
@@ -63,67 +56,94 @@ cap <- function(minimum, maximum, avalue) {
     return(avalue)
 }
 
-closest_discrete_x <- function(anX) {
-  return(which(abs(x_discrete - anX) == min(abs(x_discrete - anX))))
+# Returns the index of the closest discrete x value 
+closest_discrete_x <- function(x) {
+  return(which(abs(x_d - x) == min(abs(x_d - x)))[1])
 }
 
-# Terminal reward.
-for (j in 1:length(x_discrete)) {
-  if (x_discrete[j] <= c_g) {
+
+# Interpolate between two values a and b. dx is a value between 0 and 1.
+linear_interpolation <- function (a, b, dx) {
+  return((1-dx)*a+ b*dx)
+}
+
+# Interpolate a fitness value for a given combination of x, t and d.
+interpolate <- function (x, t, d) {
+  closest <- closest_discrete_x(x)
+  
+  if (x < x_d[closest]) {
+    j1 <- closest -1
+    j2 <- closest
+  } else if (x > x_d[closest]){
+    j1 <- closest
+    j2 <- closest +1
+  } else {
+    return(x)
+  }
+  
+  delta_x <- (x-x_d[j1])/(x_d[j2]-x_d[j1])
+  
+  return(linear_interpolation(Fitness[j1, t, d], Fitness[j2, t, d], delta_x))
+}
+  
+# Terminal reward - Equation 5.1
+for (j in 1:length(x_d)) {
+  x <- x_d[j]
+  if (x < c_g) {
     Fitness[j, Time +1, Days] <- 0
-  } else if ( (x_discrete[j] > c_g) & (x_discrete[j] < c_b) ) {
-    Fitness[j, Time +1, Days] <- 1 - p_b
+  } else if (x < c_b) {
+    Fitness[j, Time +1, Days] <- (1 - p_b)
   } else {
     Fitness[j, Time +1, Days] <- 1
   }
 }
 
-linear_interpolation <- function (a, b, dx) {
-  return((1-dx)*a+ b*dx)
-}
-
-interpolate <- function (x, t, d) {
-  closest <- closest_discrete_x(x)
-  
-  if (x < x_discrete[closest]) {
-    j1 <- closest -1
-    j2 <- closest
-  } else {
-    j1 <- closest
-    j2 <- closest +1
-  }
-
-  delta_x <- (x-x_discrete[j1])/(x_discrete[j2]-x_discrete[j1])
-  
-  return(linear_interpolation(x_discrete[j1], x_discrete[j2], delta_x))
-}
-
 for (d in Days:1) {
-  for (t in (Time+1):1) {
-    for (j in (1:length(x_discrete))) {
-      if ( (t == Time +1) & (d < Days) ) {
-        if (x_discrete[j] < c_g) {           # Not enough to survive good night.
-          Fitness[j, t, d] <- 0
-        } else if (x_discrete[j] < c_b) {    # Not enough to survive bad night.
-          Fitness[j, t, d] <- (1-p_b)* interpolate(x_discrete[j]-c_g, 1, d +1)
-        } else {                             # Survive both.
-          Fitness[j, t, d] <- (1-p_b)* interpolate(x_discrete[j]-c_g, 1, d +1) + p_b*interpolate(x_discrete[j] - c_b, 1, d +1)
-        }
-      } else if (t <= Time) {
-        F_i <- vector(mode = 'numeric', length=3)
+  #browser()
+  # Night fitness cost is only relevant if not the last day, since terminal 
+  # fitness has already been calculated.
+  if (d != Days) {
+    # Equation 5.2
+    for (j in 1:length(x_d) ) {
+      x <- x_d[j]
+      if (x < c_g) { # No chance of survival.
+        Fitness[j, Time+1, d] <- 0
+      } else if (x < c_b) { 
+        Fitness[j, Time+1, d] <- (1-p_b)*interpolate(x-c_g, 1, d+1)
+      } else {
+        Fitness[j, Time+1, d] <- (1-p_b)*interpolate(x-c_g, 1, d+1) + p_b*interpolate(x-c_b, 1, d+1)
+      }
+    }
+  }
+  # Otherwise use the dynammic programming equation for d <= Days and t <= Time
+  for (t in Time:1) {
+    for (j in 1:length(x_d)) {
+      x <- x_d[j]
+      # Vector for storing fitness values for each of the patches.
+      F_i <- vector(mode = 'numeric', length=3)
+      
+      #Calculate resulting fitness of choosing each patch
+      for (h in 1:3) {
+        # Equation 5.4
+        x_mark <- cap( 0, x_max, (x + (1/Time)*e[h] + gamma*(1/Time)*(m_0 + x)) )
         
-        for (h in H) {
-          x_mark <- cap( 0, x_max, x_discrete[j] + (1/Time)*e[h] - gamma * (1/Time)*(m_0 + x_discrete[j]) )
-          F_i[h] <- ( 1 - (1/Time)*(mu[h] + lambda*x_discrete[j]))*(interpolate(x_mark, t +1, d) )
-        }
         
-        Fitness[j, t, d]  <- max(F_i)
-        Decision[j, t, d] <- which(F_i == max(F_i))[1]
+        # Equation 5.3
+        F_i[h] <- (1 - (1/Time)*(mu[h]+lambda*(m_0+x)))*interpolate(x_mark, t+1, d)
       }
       
+      # Fitness is the fitness of the patch that maximizes fitness.
+      Fitness[j, t, d] <- max(F_i)[1]
+      
+      # Decision is the patch choice that gives the highest fitness.
+      Decision[j, t, d] <- which(F_i == max(F_i))[1]
     }
   }
 }
 
-View(Fitness[,,Days])
+
 View(Decision[,,Days])
+
+library('plot.matrix')
+plot(Decision[,,Days], breaks=c(0.5,1.5,2.5,3.5))
+plot(Fitness[,,Days])
