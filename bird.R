@@ -9,7 +9,7 @@ x_d <- seq(from = 0, to = x_max, length.out=100)
 # Basic daily predation risk patch 1/2.
 mu <- c(0, 0.001, 0.005) # /day
 
-# Increase in predation rsik with body mass.
+# Increase in predation risk with body mass.
 lambda = 0.46            # /g
 
 # Net daily forage inntake for patch 1/2.
