@@ -68,7 +68,7 @@ interpolate <- function (x, t) {
     j1 <- closest
     j2 <- closest +1
   } else {
-    return(x)
+    return(Fitness[closest, t])
   }
   
   delta_x <- (x-x_d[j1])/(x_d[j2]-x_d[j1])
