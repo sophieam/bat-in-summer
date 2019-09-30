@@ -4,46 +4,36 @@
 x_max = 2.4          # g
 
 # Discretizised values of x.
-x_d <- seq(from = 0, to = x_max, length.out=100)
+x_d <- seq(from = 0, to = x_max, length.out=10)
 
 # Basic daily predation risk patch 1/2.
 mu <- c(0, 0.001, 0.005) # /day
 
 # Increase in predation risk with body mass.
-lambda = 0.46            # /g
+lambda = 0.46           # /g
 
 # Net daily forage inntake for patch 1/2.
 e      = c(0, 0.6, 2.0)  # g/day
 
-# Nighttime metabolic cost, good/bad conditions respectively.
-c_g    = 0.48            # g
-c_b    = 1.20            # g
-
-p_b    = 0.167
-
 # Mass of bird with zero fat reserves.
-m_0    = 10          # g
+m_0    = 10              # g
 
 #Metabolic rate.
-gamma  = 0.04        # /day
+gamma  = 0.04            # /day
 
 # Time periods per day 
-Time = 50
+Time = 5
 
-# Days
-Days = 120
 
 # F(x, t, d) - Fitness (probability of survival)
-Fitness <- array(data = NA, dim = c(length(x_d), Time+1, Days), dimnames = list(
+Fitness <- array(data = NA, dim = c(length(x_d), Time+1), dimnames = list(
   x_d,
-  1:(Time+1),
-  1:Days) )
+  1:(Time+1)) )
 
 # Optimal decision given time and state: 
-Decision <- array(data = 0L, dim = c(length(x_d), Time, Days), dimnames = list(
+Decision <- array(data = NA, dim = c(length(x_d), Time), dimnames = list(
   x_d,
-  1:Time,
-  1:Days))
+  1:Time))
 
 
 # Ensure that a value is between a minimum and a maximum.
@@ -68,7 +58,7 @@ linear_interpolation <- function (a, b, dx) {
 }
 
 # Interpolate a fitness value for a given combination of x, t and d.
-interpolate <- function (x, t, d) {
+interpolate <- function (x, t) {
   closest <- closest_discrete_x(x)
   
   if (x < x_d[closest]) {
@@ -83,67 +73,58 @@ interpolate <- function (x, t, d) {
   
   delta_x <- (x-x_d[j1])/(x_d[j2]-x_d[j1])
   
-  return(linear_interpolation(Fitness[j1, t, d], Fitness[j2, t, d], delta_x))
+  return(linear_interpolation(Fitness[j1, t], Fitness[j2, t], delta_x))
 }
   
 # Terminal reward - Equation 5.1
 for (j in 1:length(x_d)) {
   x <- x_d[j]
-  if (x < c_g) {
-    Fitness[j, Time +1, Days] <- 0
-  } else if (x < c_b) {
-    Fitness[j, Time +1, Days] <- (1 - p_b)
+  if (x < 1.2) {
+    Fitness[j, Time +1] <- 0
   } else {
-    Fitness[j, Time +1, Days] <- 1
+    Fitness[j, Time +1] <- 1
   }
 }
 
-for (d in Days:1) {
-  #browser()
-  # Night fitness cost is only relevant if not the last day, since terminal 
-  # fitness has already been calculated.
-  if (d != Days) {
-    # Equation 5.2
-    for (j in 1:length(x_d) ) {
-      x <- x_d[j]
-      if (x < c_g) { # No chance of survival.
-        Fitness[j, Time+1, d] <- 0
-      } else if (x < c_b) { 
-        Fitness[j, Time+1, d] <- (1-p_b)*interpolate(x-c_g, 1, d+1)
-      } else {
-        Fitness[j, Time+1, d] <- (1-p_b)*interpolate(x-c_g, 1, d+1) + p_b*interpolate(x-c_b, 1, d+1)
-      }
+for (t in Time:1) {
+  for (j in 1:length(x_d)) {
+    x <- x_d[j]
+    # Vector for storing fitness values for each of the patches.
+    F_i <- vector(mode = 'numeric', length=3)
+    
+    #Calculate resulting fitness of choosing each patch
+    for (h in 1:3) {
+      # Equation 5.4
+      x_mark <- cap( 0, x_max, (x + (1/Time)*e[h] - (1/Time)*gamma*(m_0+x)) )
+      
+      
+      # Equation 5.3
+      F_i[h] <- (1 - (1/Time)*(mu[h]+lambda*(x)))*interpolate(x_mark, t+1)
     }
-  }
-  # Otherwise use the dynammic programming equation for d <= Days and t <= Time
-  for (t in Time:1) {
-    for (j in 1:length(x_d)) {
-      x <- x_d[j]
-      # Vector for storing fitness values for each of the patches.
-      F_i <- vector(mode = 'numeric', length=3)
-      
-      #Calculate resulting fitness of choosing each patch
-      for (h in 1:3) {
-        # Equation 5.4
-        x_mark <- cap( 0, x_max, (x + (1/Time)*e[h] + gamma*(1/Time)*(m_0 + x)) )
-        
-        
-        # Equation 5.3
-        F_i[h] <- (1 - (1/Time)*(mu[h]+lambda*(m_0+x)))*interpolate(x_mark, t+1, d)
-      }
-      
-      # Fitness is the fitness of the patch that maximizes fitness.
-      Fitness[j, t, d] <- max(F_i)[1]
-      
-      # Decision is the patch choice that gives the highest fitness.
-      Decision[j, t, d] <- which(F_i == max(F_i))[1]
-    }
+    
+    # Fitness is the fitness of the patch that maximizes fitness.
+    Fitness[j, t] <- max(F_i)[1]
+    
+    # Optimal patch choice is the one that maximizes fitness.
+    # In cases where more than one patch shares the same fitness, 
+    # only the first one is considered.
+    Decision[j, t] <- which(F_i == max(F_i))[1]
   }
 }
 
 
-View(Decision[,,Days])
 
+View(Decision)
+View(Fitness)
 library('plot.matrix')
-plot(Decision[,,Days], breaks=c(0.5,1.5,2.5,3.5))
-plot(Fitness[,,Days])
+plot(Decision, breaks=c(0.5, 1.5, 2.5, 3.5))
+plot(Fitness)
+
+library(plot3D)
+
+persp3D(z = Fitness, theta = 225, phi =45,
+        xlab = "State (x)", 
+        ylab = "Time (t)",
+        zlab = "Fitness (F)")
+
+
