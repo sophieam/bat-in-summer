@@ -1,16 +1,16 @@
 ## From table 5.1 (p. 110) in Dynamic state variable models in ecology.
 
 # Maximum energy reserves.
-x_max = 2.4          # g
+x_max = 2.4              # g
 
 # Discretizised values of x.
-x_d <- seq(from = 0, to = x_max, length.out=10)
+x_d <- seq(from = 0, to = x_max, length.out=100)
 
 # Basic daily predation risk patch 1/2.
 mu <- c(0, 0.001, 0.005) # /day
 
 # Increase in predation risk with body mass.
-lambda = 0.46           # /g
+lambda = 0.46            # /g
 
 # Net daily forage inntake for patch 1/2.
 e      = c(0, 0.6, 2.0)  # g/day
@@ -18,11 +18,18 @@ e      = c(0, 0.6, 2.0)  # g/day
 # Mass of bird with zero fat reserves.
 m_0    = 10              # g
 
+# Metabolic cost in a good and bad night respectively.
+c_g    = 0.48            # g
+c_b    = 1.20            # g
+
+# Probability of a night being bad.
+p_b    = 0.167
+
 #Metabolic rate.
-gamma  = 0.04            # /day
+gamma  = 0.04             # /day 0.04
 
 # Time periods per day 
-Time = 5
+Time = 50
 
 
 # F(x, t, d) - Fitness (probability of survival)
@@ -37,10 +44,8 @@ Decision <- array(data = NA, dim = c(length(x_d), Time), dimnames = list(
 
 
 # Ensure that a value is between a minimum and a maximum.
-cap <- function(minimum, maximum, avalue) {
-  if (avalue < minimum) {
-    return(minimum)
-  } else if (avalue > maximum) {
+cap <- function(maximum, avalue) {
+  if (avalue > maximum) {
     return(maximum)
   } else
     return(avalue)
@@ -79,8 +84,11 @@ interpolate <- function (x, t) {
 # Terminal reward - Equation 5.1
 for (j in 1:length(x_d)) {
   x <- x_d[j]
-  if (x < 1.2) {
+  
+  if (x < c_g) {
     Fitness[j, Time +1] <- 0
+  } else if (x < c_b) {
+    Fitness[j, Time +1] <- (1-p_b)
   } else {
     Fitness[j, Time +1] <- 1
   }
@@ -95,11 +103,15 @@ for (t in Time:1) {
     #Calculate resulting fitness of choosing each patch
     for (h in 1:3) {
       # Equation 5.4
-      x_mark <- cap( 0, x_max, (x + (1/Time)*e[h] - (1/Time)*gamma*(m_0+x)) )
+      x_mark <- cap(x_max, (x + (1/Time)*(e[h] - gamma*(m_0+x)) ))
       
       
       # Equation 5.3
-      F_i[h] <- (1 - (1/Time)*(mu[h]+lambda*(x)))*interpolate(x_mark, t+1)
+      if (x_mark < 0) {
+        F_i[h] <- 0
+      } else {
+        F_i[h] <- (1 - min(c((1/Time)*(mu[h]+lambda*(x)), 1)))*interpolate(x_mark, t+1)
+      }
     }
     
     # Fitness is the fitness of the patch that maximizes fitness.
@@ -117,12 +129,12 @@ for (t in Time:1) {
 View(Decision)
 View(Fitness)
 library('plot.matrix')
-plot(Decision, breaks=c(0.5, 1.5, 2.5, 3.5))
+plot(Decision, breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"))
 plot(Fitness)
 
 library(plot3D)
 
-persp3D(z = Fitness, theta = 225, phi =45,
+persp3D(z = Fitness, theta = 225, phi = 45,
         xlab = "State (x)", 
         ylab = "Time (t)",
         zlab = "Fitness (F)")
