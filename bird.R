@@ -4,7 +4,7 @@
 x_max = 2.4              # g
 
 # Discretizised values of x.
-x_d <- seq(from = 0, to = x_max, length.out=10)
+x_d <- seq(from = 0, to = x_max, length.out=100)
 
 # Basic daily predation risk patch 1/2.
 mu <- c(0, 0.001, 0.005) # /day
@@ -29,7 +29,7 @@ p_b    = 0.167
 gamma  = 0.04             # /day
 
 # Time periods per day 
-Time = 5
+Time = 50
 
 
 # F(x, t, d) - Fitness (probability of survival)
@@ -109,7 +109,7 @@ for (t in Time:1) {
       
       
       # Equation 5.3
-      F_i[h] <- (1 - min(c((1/Time)*(mu[h]+lambda*(x)), 1)))*interpolate(x_mark, t+1)
+      F_i[h] <- (1 - min(c((1/Time)*(mu[h]*lambda^(m_0+x)), 1)))*interpolate(x_mark, t+1)
     }
     
     # Fitness is the fitness of the patch that maximizes fitness.
