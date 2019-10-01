@@ -130,7 +130,7 @@ for (d in Days:1) {
         x_mark <- min(c(x_max, x_mark))
         
         # Equation 5.3
-        F_i[h] <- (1 - min(c((1/Time)*(mu[h]+lambda*(x)), 1)))*interpolate(x_mark, t+1, d)
+        F_i[h] <- (1 - (1/Time)*(mu[h]*exp(lambda*x)) ) *interpolate(x_mark, t+1, d)
       }
       
       # Fitness is the fitness of the patch that maximizes fitness.
@@ -153,7 +153,7 @@ plot(Fitness[,,Days-20])
 
 library(plot3D)
 
-persp3D(z = Fitness[,,Days], theta = 225, phi = 45,
+persp3D(z = Fitness[,,Days-20], theta = 225, phi = 45,
         xlab = "State (x)", 
         ylab = "Time (t)",
         zlab = "Fitness (F)")
