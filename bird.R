@@ -55,8 +55,6 @@ Decision <- array(data = NA, dim = c(length(x_d), Time, Days), dimnames = list(
   1:Time,
   1:Days))
 
-
-
 # Interpolate a fitness value for a given combination of x, t and d.
 interpolate <- function (x, t, d) {
   
@@ -71,7 +69,6 @@ interpolate <- function (x, t, d) {
   linear_interpolation <- function (a, b, dx) {
     return((1-dx)*a+ b*dx)
   }
-  
   
   # No point in doing interpolation if energy reserves are negative.
   # Bird is dead.
