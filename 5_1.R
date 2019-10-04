@@ -171,26 +171,115 @@ for (d in Days:1) {
 
 # Reverse the x-dimension of the array so it is ordered from high to low. 
 # Nicer when plotting.
-Fit <- Fit[length(x_d):1,,]
-H <-   H  [length(x_d):1,,]
+Fit.rev <- Fit[length(x_d):1,,]
+H.rev <-   H  [length(x_d):1,,]
 
 # Plotting the optimal decision at any given time.
 # black:  Patch 1 (0)
 # yellow: Patch 2 (1)
 # red:    Patch 3 (2)
 # Should be equivalent to Figure 5.2 in Clark and Mangel (1999).
-plot(H[,,Days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"),
+plot(H.rev[,,Days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"),
      xlab = "Time of day",
      ylab = "Fat reserves")
 
 # Fitness 
-plot(Fit[,,Days-20],
+plot(Fit.rev[,,Days-20],
      xlab = "Time of day",
      ylab = "Fat reserves")
 
 # Fitness landscape plot.
-persp3D(z = Fit[,,Days-20], theta = 135, phi = 45,
+persp3D(z = Fit.rev[,,Days-20], theta = 135, phi = 45,
         xlab = "State (x)", 
         ylab = "Time (t)",
         zlab = "Fitness (F)")
+
+
+
+###### FORWARD ITERATION ######
+# The below section implements forward iteration of the above model (i.e. 
+# looking at the fate of individuals in the model).
+
+# Number of days to forward iterate for.
+Days  <- 10
+
+# Time/day is given from the model above.
+
+# Initial states for individual (A vector of indecies in x_d).
+j_0 <- 1 # seq(from=1, to = length(x_d), by = 20)
+
+# Number of individuals to iterate for each x_0. Total number of individuals
+# is length(x_0)*N.ind:
+N.ind <- 1
+
+# X[j_0, N, D, T]:
+# State of individual N with initial state j_0, at day D and time T.
+
+X <- array(data = NA, dim = c(length(j_0), N.ind, Days+1, Time), dimnames = list(
+  x_d[j_0],
+  1:N.ind,
+  1:(Days +1),
+  1:Time
+))
+
+for (j in 1:length(j_0)) {
+  x_0 <- x_d[j_0[j]]
+  for (n in 1:N.ind) {
+    # Set the initial state.
+    X[j, n, 1, 1] <- x_0
+      
+    for (d in 1:Days) {
+      # Forward iterate through the day.
+      for (t in 1:Time ) {
+        # The current state.
+        x <- X[j, n, d, t]
+        if (x < 0) {
+          # Bird is dead. It will remain dead.
+          x_new <- x
+        } else {
+          # The best decision given the current state (Found by rounding x to the closest item
+          # in x_d. TODO: interpolate the decision between the two closest optimal decisions.)
+          h <- H[which(abs(x_d - x) == min(abs(x_d - x)))[1], t, d]
+          
+          print(paste0("h=", h))
+          if (runif(1) < mu[h]*exp(lambda*x)) { # Predation risk.
+            # Negative x = dead.
+            x_new <- -1
+          } else {
+            metabolism <- (1/Time)*gamma*(m_0+x)
+            foraging   <- (1/Time)*e[h]
+            
+            print(paste0("x=  ", x))
+            print(paste0("met=", metabolism))
+            print(paste0("for=", foraging))
+            
+            x_new <- x + foraging - metabolism
+          }
+        }
+        
+        if (t == Time) {
+          # If it is the end of the day, nightly costs need to be applied as well.
+          if (runif(1) < p_b) {
+            # Bad night.
+            x_new <- x_new - c_b
+          } else {
+            # Good night.
+            x_new <- x_new - c_g
+          }
+          
+          # Set the state for the start of the following day.
+          X[j, n, d+1, 1] <- x_new
+        } else {
+          # Set the state for the next time of current day.
+          X[j, n, d, t+1] <- x_new
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
 
