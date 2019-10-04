@@ -19,7 +19,7 @@ x_d <- seq(from = 0, to = x_max, length.out=100)
 mu <- c(0, 0.001, 0.005) # /day
 
 # Increase in predation risk with body mass.
-lambda = 0.46            # /g
+lambda = 0.46            # /g fat reserves
 
 # Net daily forage inntake for patch 1/2.
 e      = c(0, 0.6, 2.0)  # g/day
@@ -35,7 +35,7 @@ c_b    = 1.20            # g
 p_b    = 0.167
 
 #Metabolic rate.
-gamma  = 0.04             # /g day
+gamma  = 0.04             # /(g*day) body weight
 
 # Time periods per day 
 Time = 50
@@ -169,20 +169,24 @@ for (d in Days:1) {
 }
 
 
-# Reverse the x-dimension of the array it is ordered from high to low. 
+# Reverse the x-dimension of the array so it is ordered from high to low. 
 # Nicer when plotting.
 Fit <- Fit[length(x_d):1,,]
-H <-   H[length(x_d):1,,]
+H <-   H  [length(x_d):1,,]
 
 # Plotting the optimal decision at any given time.
 # black:  Patch 1 (0)
 # yellow: Patch 2 (1)
 # red:    Patch 3 (2)
 # Should be equivalent to Figure 5.2 in Clark and Mangel (1999).
-plot(H[,,Days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"))
+plot(H[,,Days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"),
+     xlab = "Time of day",
+     ylab = "Fat reserves")
 
 # Fitness 
-plot(Fit[,,Days-20])
+plot(Fit[,,Days-20],
+     xlab = "Time of day",
+     ylab = "Fat reserves")
 
 # Fitness landscape plot.
 persp3D(z = Fit[,,Days-20], theta = 135, phi = 45,
