@@ -168,6 +168,12 @@ for (d in Days:1) {
   }
 }
 
+
+# Reverse the x-dimension of the array it is ordered from high to low. 
+# Nicer when plotting.
+Fit <- Fit[length(x_d):1,,]
+H <-   H[length(x_d):1,,]
+
 # Plotting the optimal decision at any given time.
 # black:  Patch 1 (0)
 # yellow: Patch 2 (1)
@@ -179,7 +185,7 @@ plot(H[,,Days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red")
 plot(Fit[,,Days-20])
 
 # Fitness landscape plot.
-persp3D(z = Fit[,,Days-20], theta = 225, phi = 45,
+persp3D(z = Fit[,,Days-20], theta = 135, phi = 45,
         xlab = "State (x)", 
         ylab = "Time (t)",
         zlab = "Fitness (F)")
