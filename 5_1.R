@@ -201,7 +201,7 @@ persp3D(z = Fit.rev[,,Days-20], theta = 135, phi = 45,
 # looking at the fate of individuals in the model).
 
 # Number of days to forward iterate for.
-Days  <- 10
+Days  <- 25
 
 # Time/day is given from the model above.
 
@@ -210,76 +210,95 @@ j_0 <- 1 # seq(from=1, to = length(x_d), by = 20)
 
 # Number of individuals to iterate for each x_0. Total number of individuals
 # is length(x_0)*N.ind:
-N.ind <- 1
+N.ind <- 50
 
 # X[j_0, N, D, T]:
 # State of individual N with initial state j_0, at day D and time T.
 
-X <- array(data = NA, dim = c(length(j_0), N.ind, Days+1, Time), dimnames = list(
+X <- array(data = NA, dim = c(length(j_0), N.ind, Days*Time +1), dimnames = list(
   x_d[j_0],
   1:N.ind,
-  1:(Days +1),
-  1:Time
+  1:(Days*Time+1)
 ))
 
 for (j in 1:length(j_0)) {
   x_0 <- x_d[j_0[j]]
   for (n in 1:N.ind) {
     # Set the initial state.
-    X[j, n, 1, 1] <- x_0
+    X[j, n, 1] <- x_0
       
-    for (d in 1:Days) {
-      # Forward iterate through the day.
-      for (t in 1:Time ) {
-        # The current state.
-        x <- X[j, n, d, t]
-        if (x < 0) {
-          # Bird is dead. It will remain dead.
-          x_new <- x
-        } else {
-          # The best decision given the current state (Found by rounding x to the closest item
-          # in x_d. TODO: interpolate the decision between the two closest optimal decisions.)
-          h <- H[which(abs(x_d - x) == min(abs(x_d - x)))[1], t, d]
-          
-          print(paste0("h=", h))
-          if (runif(1) < mu[h]*exp(lambda*x)) { # Predation risk.
-            # Negative x = dead.
-            x_new <- -1
-          } else {
-            metabolism <- (1/Time)*gamma*(m_0+x)
-            foraging   <- (1/Time)*e[h]
-            
-            print(paste0("x=  ", x))
-            print(paste0("met=", metabolism))
-            print(paste0("for=", foraging))
-            
-            x_new <- x + foraging - metabolism
-          }
-        }
+    # Iterate through the time.
+    for (z in 1:(Days*Time) ) {
+      t = (z-1) %%  Time  +1 # Time of day
+      d = (z-1) %/% Time  +1 # Day
+      # The current state.
+      x <- X[j, n, z]
+      if (x < 0) {
+        # Bird is dead. It will remain dead.
+        x_new <- x
+      } else {
+        # The best decision given the current state (Found by rounding x to the closest item
+        # in x_d. TODO: interpolate the decision between the two closest optimal decisions.)
+        h <- H[which(abs(x_d - x) == min(abs(x_d - x)))[1], t, d]
         
-        if (t == Time) {
-          # If it is the end of the day, nightly costs need to be applied as well.
-          if (runif(1) < p_b) {
-            # Bad night.
-            x_new <- x_new - c_b
-          } else {
-            # Good night.
-            x_new <- x_new - c_g
-          }
-          
-          # Set the state for the start of the following day.
-          X[j, n, d+1, 1] <- x_new
+        print(paste0("h=", h))
+        if (runif(1) < mu[h]*exp(lambda*x)) { # Predation risk.
+          # Negative x = dead.
+          x_new <- -1
         } else {
-          # Set the state for the next time of current day.
-          X[j, n, d, t+1] <- x_new
+          metabolism <- (1/Time)*gamma*(m_0+x)
+          foraging   <- (1/Time)*e[h]
+          
+          print(paste0("x=  ", x))
+          print(paste0("met=", metabolism))
+          print(paste0("for=", foraging))
+          
+          x_new <- x + foraging - metabolism
         }
       }
+      
+      if (t == Time) {
+        # If it is the end of the day, nightly costs need to be applied as well.
+        if (runif(1) < p_b) {
+          # Bad night.
+          x_new <- x_new - c_b
+        } else {
+          # Good night.
+          x_new <- x_new - c_g
+        }
+        
+        # Set the state for the start of the following day.
+      } 
+      
+      # Set new state.
+      X[j, n, z+1] <- x_new
     }
   }
 }
 
+## The below plots multiple individuals on the same plot.
+# Red vertical lines: Separates days.
+# Light grey solid line: Fat reserves necessary for surviving a bad night.
+# Light grey dotted line: Fat reserves necessary for surviving a bad night.
+
+# Create an empty plot, with the necessary xlim and ylim.
+plot(NA, type="n", 
+     xlab="Time",
+     ylab="Fat reserves (g)", xlim=c(1, (Days*Time +1)), ylim=c(0, x_max))
 
 
+# Horizontal lines to indicate cost of good and bad night respectively.
+abline(h=c_g, col = "blue", lty = 3)
+abline(h=c_b, col = "blue", lty = 1)
 
+# Plot each individual for the chosen x_0.
+for (n in 1:N.ind) {
+  lines(1:(Days*Time +1), X[1, n, ], col = "black")
+}
+
+# Plot vertical lines to indicate position of the night.
+for (i in 1:Days) {
+  abline(v=i*Time, col = "red", lty = 3)
+}
 
 
