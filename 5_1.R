@@ -251,7 +251,8 @@ for (j in 1:length(j_0)) {
         x_new <- x
       } else {
         # The best decision given the current state (Found by rounding x to the closest item
-        # in x_d. TODO: interpolate the decision between the two closest optimal decisions.)
+        # in x_d).
+        # TODO: interpolate the decision between the two closest optimal decisions.
         h <- H[which(abs(x_d - x) == min(abs(x_d - x)))[1], t, d]
         
         print(paste0("h=", h))
@@ -290,8 +291,8 @@ for (j in 1:length(j_0)) {
 }
 
 ## The below plots multiple individuals on the same plot.
-# Red vertical lines: Separates days.
-# Light grey solid line: Fat reserves necessary for surviving a bad night.
+# Red vertical lines:     Separates days.
+# Light grey solid line:  Fat reserves necessary for surviving a bad night.
 # Light grey dotted line: Fat reserves necessary for surviving a bad night.
 
 # Create an empty plot, with the necessary xlim and ylim.
