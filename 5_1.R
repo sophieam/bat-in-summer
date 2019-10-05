@@ -168,6 +168,19 @@ for (d in Days:1) {
   }
 }
 
+# Fitness function at two different times on day Days-20, t=25 and t=49 respectively.
+# This figure should be equivalent to 5.1 in Clark and Mangel (1999).
+
+# Create an empty plot for plotting lines.
+plot(NA, type="n", 
+     xlab="Fat reserves (g)",
+     ylab="Fitness, F[x, t]", 
+     xlim=c(0, x_max), ylim=c(0, 1))
+
+# Plotting the lines.
+lines(x_d, as.vector(Fit[,25,Days-20]), col = "black", lty = 3)
+lines(x_d, as.vector(Fit[,49,Days-20]), col = "black", lty = 1)
+
 
 # Reverse the x-dimension of the array so it is ordered from high to low. 
 # Nicer when plotting.
