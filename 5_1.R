@@ -315,4 +315,13 @@ for (i in 1:Days) {
   abline(v=i*Time, col = "red", lty = 3)
 }
 
+# Calculate the proportion of individuals still alive at the start 
+# of each day.
+
+
+
+
+
+
+
 
