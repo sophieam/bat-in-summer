@@ -122,7 +122,7 @@ for (d in Days:1) {
       x <- x_d[j]
 
       # Equation 5.3
-      # Fitness is (1-p_survive)*fitness the morning after.
+      # Fitness is p_survive*fitness the morning after.
       if (x < c_g) {
         # Bird is dead, it just doesn't know it yet.
         Fit[j, Time+1, d] <- 0
@@ -214,7 +214,7 @@ persp3D(z = Fit.rev[,,Days-20], theta = 135, phi = 45,
 # looking at the fate of individuals in the model).
 
 # Number of days to forward iterate for.
-Days  <- 25
+Days  <- 120
 
 # Time/day is given from the model above.
 
@@ -223,7 +223,7 @@ j_0 <- 1 # seq(from=1, to = length(x_d), by = 20)
 
 # Number of individuals to iterate for each x_0. Total number of individuals
 # is length(x_0)*N.ind:
-N.ind <- 50
+N.ind <- 500
 
 # X[j_0, N, D, T]:
 # State of individual N with initial state j_0, at day D and time T.
@@ -255,17 +255,12 @@ for (j in 1:length(j_0)) {
         # TODO: interpolate the decision between the two closest optimal decisions.
         h <- H[which(abs(x_d - x) == min(abs(x_d - x)))[1], t, d]
         
-        print(paste0("h=", h))
-        if (runif(1) < mu[h]*exp(lambda*x)) { # Predation risk.
+        if (runif(1) <= (1/Time)*mu[h]*exp(lambda*x)) { # Predation risk.
           # Negative x = dead.
           x_new <- -1
         } else {
           metabolism <- (1/Time)*gamma*(m_0+x)
           foraging   <- (1/Time)*e[h]
-          
-          print(paste0("x=  ", x))
-          print(paste0("met=", metabolism))
-          print(paste0("for=", foraging))
           
           x_new <- x + foraging - metabolism
         }
@@ -293,7 +288,7 @@ for (j in 1:length(j_0)) {
 ## The below plots multiple individuals on the same plot.
 # Red vertical lines:     Separates days.
 # Light grey solid line:  Fat reserves necessary for surviving a bad night.
-# Light grey dotted line: Fat reserves necessary for surviving a bad night.
+# Light grey dotted line: Fat reserves necessary for surviving a good night.
 
 # Create an empty plot, with the necessary xlim and ylim.
 plot(NA, type="n", 
@@ -318,10 +313,25 @@ for (i in 1:Days) {
 # Calculate the proportion of individuals still alive at the start 
 # of each day.
 
+alive = data.frame(day = NULL, n_alive = NULL, p_alive = NULL)
+for (d in 1:(Days+1)) {
+  
+  tmp <- data.frame(day = d,
+                    n_alive = length(which(as.vector(X[1, , (d-1)*Time +1]) >= 0))
+                    
+      
+                   )
+  tmp$p_alive <- tmp$n_alive/N.ind
+  
+  alive <- rbind(alive, tmp)
+}
 
+# Plotting the proportion of individuals that are still alive 
+# at the beginning of each day.
+plot(NA, type="n", 
+     xlab="Day",
+     ylab="Proportion alive", xlim=c(1, Days+1), ylim=c(0, 1))
 
-
-
-
+lines(alive$day, alive$p_alive)
 
 
