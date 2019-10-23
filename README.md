@@ -14,13 +14,5 @@ The energy reserves required at the end of the day to survive is stochastic. A b
 
 This model can be found in **5_1.R**.
 
-# 5.2: Social interaction
-
-# 5.4: Hoarding behaviour
-
-# 5.5: Long-term hoarding
-
-
-
 <sup>1</sup>: Clark, C. W. & Mangel, M. *Dynamic state variable models in ecology: methods and applications*. (Oxford University Press, 2000).
 
