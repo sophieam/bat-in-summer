@@ -6,59 +6,59 @@
 library(plot.matrix)
 #install.packages('plot3D')
 library(plot3D)
+library(ggplot2)
+#install.packages('tidyr')
+library('tidyr')
+#install.packages('viridis')
+library(viridis) # colour blind friendly palette, works in B&W also
 
-#---- State ---- 
+#Import predation data
+
+predationdata<-read.csv("PredationAndForagingEquation.csv")
+
+#---- State (fat reserves) ---- 
 # Defining state variables. Fat reserves are important as they determine hunting efficiency.
 #There is a negative feedback loop here, as fatter bats will be able to hunt less.
 
 m_0    <- 10    # Mass of bat with zero fat reserves (g)
-x_max  <- 6   # Maximum fat reserves (g)
+x_max  <- 2.4   # Maximum fat reserves (g)
                 
 x_d    <- seq(from = 0, to = x_max, 
               length.out=100)   # Discretized values of x
 
 
-#---- Actions ---- 
+#---- Actions (costs and rewards) ---- 
 # Defining decision-related variables.
 # Bats can choose between a maximum of three actions: forage, roost (no torpor), roost (torpor).
 # These are coded as i = [1, 2, 3] 
 # Each patch (H[i]) has a different energy cost denoted by mu (due to metabolism).
 # Each patch also has a different energetic gain denoted by e (in practice only the foraging patch leads to an energetic gain).
-# The bird code included predation, but in bats energy cost is likely to be a stronger influence on decisions.
 
-mu <- c(0.0005, 0.0002, 0.0001)  # Basic daily metabolic cost per patch (/day) 
-e  <- c(0, 0.6, 0.6)      # Net daily forage intake for patch 1/2 (g/day)
+mu <- c(0, 0.001, 0.005)  # Basic daily predation risk per patch (/day) 
+e  <- c(0, 0.6, 2.0)      # Net daily forage inntake for patch 1/2 (g/day)
 
-lambda <- 0.06     # Decrease in hunting efficiency with body mass (/g fat reserves)
+#The following value is to be changed
+lambda <- 0.46     # Increase in predation risk due to body mass (/g fat reserves)
 
 # The metabolic costs per day are also mass-dependent, equal to gamma * (m0 * x), 
 # where m0 is the mass of the bat with zero fat reserves (defined above)
 
+#The following value is to be changed
 gamma  <- 0.04     # Metabolic rate (g/day)
 
 
-
-#---- Fitness ---- 
-# Summer consists of 120 days (Days) and each day is divided into 50 time steps (Time). 
+#---- Fitness (time, probability of good or bad night)---- 
+# Summer consists of 153 days (Days) and each day is divided into 48 time steps (Time). 
 # We can account for this with a nested loop (see backwards iteration below). 
 # Environmental stochasticity arises from daily metabolic costs. 
 # A bad day has a higher metabolic costs (c_b) and occurs with probability p_b
 # A good day has a lower metabolic cost (c_g) and occurs with probability 1-p_b
 
-Time <- 50    # Number of time periods per day (where time+1 is the beginning of daytime)
-Days <- 120   # Number of days in summer (where days+1 is the start of winter)
+Time <- 72    # Number of time periods per day (where time+1 is the beginning of daytime) - eventually use 70
+Days <- 153   # Number of days in summer (where days+1 is the start of winter)
 c_g  <- 0.48  # Metabolic cost of a good day (g)
 c_b  <- 1.20  # Metabolic cost of a bad day (g)
 p_b  <- 0.167 # Probability of a bad day
-
-# We generate a calendar array that will code for days when torpor is or is not available.
-# Make vector of length Days, fill it with 3s
-calendar <- c(rep(3, times=Days))
-# Then overwrite these for days 70 to 90
-# We create the following variables to make it easier to change these later
-no_torpor_start <- 70
-no_torpor_end <- 80
-calendar[no_torpor_start:no_torpor_end] <- c(2)
 
 # Recall that terminal fitness is the probability of surviving the summer (i.e. d+1)
 # We can calculate it using equation 5.1 in C&M
@@ -87,7 +87,9 @@ for (j in 1:length(x_d)) {
   } # end if-else loop
 } # end for loop
 
-as.matrix(Fit[, Time+1, Days])
+#taking a look at the
+#as.matrix(Fit[, Time+1, Days])
+
 # The left column shows state, the right column shows the terminal fitness we just calculated. 
 # To survive a good day requires 0.48 g of fat reserves.
 # When x < 0.48 the bat dies (it cannot survive the best-case scenario). 
@@ -95,7 +97,7 @@ as.matrix(Fit[, Time+1, Days])
 # When 0.48 < x < 1.2 the probability of survival =  1-p_b = 0.833
 # When x > 1.2 (the cost of a bad day), the bird always survives (probability =1)
 
-#---- Discrete state variable ----
+#---- Discrete state variable (interpolation function) ----
 # The computer discretizes the state variable 
 # but in reality energetic reserves is a continuous variable. 
 # We overcome this using interpolation (see C&M 2.1)
@@ -138,6 +140,39 @@ interpolate <- function (x, t, d) {
   # Interpolate.
   return(linear_interpolation(Fit[j1, t, d], Fit[j2, t, d], delta_x))
 }
+
+#---- Temperature, predation risk and prey availability functions ----
+
+#Temperature in degrees celsius, affects prey availability and metabolic cost
+temperature <- function(currenttime){
+  currenttemperature <- 23.58 + 2.363*currenttime - 0.1514*currenttime^2 + 0.002846*currenttime^3 - 0.00001642*currenttime^4
+  return(currenttemperature)
+}
+curve(expr = temperature, from = 1, to = Time)
+
+#Prey availability
+#less then 2 == 0
+fpreyavailability <- function(currenttemperature){
+ currentpreyavailability <- 0.0001378 + 0.006198*currenttemperature - 0.01368* currenttemperature^2 + 0.008669* currenttemperature^3 - 0.002148* currenttemperature^4 + 0.0002774* currenttemperature^5 - 0.00001864* currenttemperature^6 + 0.000000618* currenttemperature^7 - 0.000000008012* currenttemperature^8
+  return(currentpreyavailability)
+}
+curve(expr = preyavailability, from = 0, to = 20)
+
+preyavailability<-preyavailability(0:20)
+
+#Predation
+predationrisk <- predationdata[,5]
+plot(predationrisk)
+
+
+#put these all together for all 3 patches
+#maybe this should be its own function?
+#make empty dataframe, 3 columns, Time rows
+
+#we need to pick a currenttime
+currenttime=1
+
+#patches 1 and 2  have 0 prey and predation
 
 # ---- Backwards Iteration ---- 
 
@@ -186,29 +221,24 @@ for (d in Days:1) {
       
       # Calculate resulting fitness of choosing each patch
       # Equation 5.4
-      
-#Here, add a check that looks up the day of the year in the calendar dataframe or array. If... else...
-#Based on this we choose between two loops: with (1:3) or without (1:2) torpor. 
     
-#first we need to grab the number of the loop, should be =d
-# then we return the corresponding calendar value
-currentday<-calendar[d]
-#then we can do our if... else... with the torpor loop under if
-# if calendar[d]=3, run prewritten loop
-#elseif calendar[d]=2, run shortened options
-#else return error
+
       
-      
-      for (i in 1:currentday) {
+      for (i in 1:3) {
         # Equation 5.4
         # Calculating the expected state in the future.
-        x_mark <- ( x + (1/Time)*(e[i] - gamma*(m_0+x)) )
+        #This is where we insert the prey value, instead of e. It should not be divided by Time in our calculation, as it is already per time step.
+        #for the prey value, we should probably make an array for each 3 patches and then for each time step
+        x_mark <- ( x + e[i,t] - ((1/Time)* gamma*(m_0+x)) )
+        #instead of the old one:
+        # x_mark <- ( x + (1/Time)*(e[i] - gamma*(m_0+x)) )
         
         # Ensure that x_mark does not exceed x_max.
         x_mark <- min(c(x_max, x_mark))
         
         # Plug x_mark (5.4) into equation 5.3
         # Calculate the expected fitness given patch choice h.
+#And this is where we insert the predation value instead of mu.
         # i.e: Chance of surviving time expected future fitness in this patch.
         F_i[i] <- (1 - (1/Time)*(mu[i]*exp(lambda*x)) ) *interpolate(x_mark, t+1, d)
       } # end i loop 
@@ -228,12 +258,11 @@ currentday<-calendar[d]
 # We can explore the decision matrix at different days, similar to Fig 5.2
 # Keeping in mind that our output shows a reverse order on the y-axis
 H[,,100] 
-
+#DONE#
 
 #--- Plots! ----
 
-# Would be nice to add a color code for days with and without torpor
-
+####Fitness function####
 # Fitness function at two different times on day Days-20, t=25 and t=49 respectively.
 # This figure should be equivalent to 5.1 in Clark and Mangel (1999).
 
@@ -252,7 +281,7 @@ lines(x_d, as.vector(Fit[,49,Days-20]), col = "black", lty = 1)
 # Nicer when plotting.
 Fit.rev <- Fit[length(x_d):1,,]
 H.rev <-   H  [length(x_d):1,,]
-
+####Optimal decision plot####
 # Plotting the optimal decision at any given time.
 # black:  Patch 1 (0)
 # yellow: Patch 2 (1)
@@ -260,14 +289,34 @@ H.rev <-   H  [length(x_d):1,,]
 # Should be equivalent to Figure 5.2 in Clark and Mangel (1999).
 plot(H.rev[,,Days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"),
      xlab = "Time of day",
-     ylab = "Fat reserves")
+     ylab = "Fat reserves",
+     )
 
-# Fitness 
+#for more flexibility I'd like to reshape the decision matrix into a long format dataframe. fat reserves, time of day and decision as columns.
+#first, let's convert the array into a dataframe
+optimaldecision<-as.data.frame(H.rev)
+optimaldecision <- cbind(rownames(optimaldecision), data.frame(optimaldecision, row.names=NULL, check.names=FALSE, stringsAsFactors=FALSE))
+colnames(optimaldecision)[1] = 'fatreserves'
+#now we do the reshaping using the tidy package (part of the tidyverse)
+optimaldecision <- gather(optimaldecision,time,decision,-fatreserves)
+#let's round the fat reserve numbers to something more sensible
+fatreserves <- as.character(optimaldecision$fatreserves)
+round(optimaldecision$fatreserves,digits=4)
+#we can now plot using ggplot2
+p <-ggplot(optimaldecision,aes(time,fatreserves,fill=decision))+
+  geom_tile() + 
+  scale_fill_viridis(name="Hrly Temps C",option ="C")
+p
+
+
+
+
+####Fitness plot####
 plot(Fit.rev[,,Days-20],
      xlab = "Time of day",
      ylab = "Fat reserves")
 
-# Fitness landscape plot.
+#### Fitness landscape plot####
 persp3D(z = Fit.rev[,,Days-20], theta = 135, phi = 45,
         xlab = "State (x)", 
         ylab = "Time (t)",
@@ -351,6 +400,7 @@ for (j in 1:length(j_0)) {
   }
 }
 
+####Forward iteration survival plot####
 ## The below plots multiple individuals on the same plot.
 # Red vertical lines:     Separates days.
 # Light grey solid line:  Fat reserves necessary for surviving a bad night.
