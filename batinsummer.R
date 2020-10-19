@@ -1,114 +1,152 @@
-# STOCHASTIC DYNAMIC MODEL: A BAT IN SUMMER
+#### STOCHASTIC DYNAMIC MODEL: A BAT IN SUMMER ####
+# Building on the code by Myranda and Thorbjørn
 
-# Building up on the code by Myranda and Thorbjørn
-
+#---- Variables (can be changed) ----
+#### Required packages and data ####
 #install.packages('plot.matrix')
 library(plot.matrix)
 #install.packages('plot3D')
 library(plot3D)
 library(ggplot2)
 #install.packages('tidyr')
-library('tidyr')
+library(tidyr)
 #install.packages('viridis')
-library(viridis) # colour blind friendly palette, works in B&W also
+library(viridis) # colourblind palette
 
-#Import predation data
+predationdata<-read.csv("Data/PredationAndForagingEquation.csv")
 
-predationdata<-read.csv("PredationAndForagingEquation.csv")
+##### State (fat reserves) ####
+mass_zero_fat    <- 10    # Mass of bat with zero fat reserves (g)
+fat_max  <- 2.4   # Maximum fat reserves (g) (NOT mass of bat with max fat reserves!)
+fat_discretized    <- seq(from = 0, to = fat_max, 
+              length.out=100)   # Discretized values of fat_state
 
-#---- State (fat reserves) ---- 
-# Defining state variables. Fat reserves are important as they determine hunting efficiency.
-#There is a negative feedback loop here, as fatter bats will be able to hunt less.
+##### Actions (metabolic costs and rewards) #####
+# Bats can choose between a maximum of three 'patches': roost (torpor), roost (no torpor), forage.
+# Each patch (patch_choice[i]) has a different predation risk and energetic gain.
 
-m_0    <- 10    # Mass of bat with zero fat reserves (g)
-x_max  <- 2.4   # Maximum fat reserves (g)
-                
-x_d    <- seq(from = 0, to = x_max, 
-              length.out=100)   # Discretized values of x
+predation_risk <- c(0, 0.001, 0.005)  # Basic daily predation risk per patch (/day) 
+foraging_benefit  <- c(0, 0.6, 2.0)      # Net daily forage inntake for patch 1/2 (g/day)
+predation_risk_increase <- 0.46     # Increase in predation risk due to body mass (/g fat reserves)
+metabolic_rate  <- 0.04     # Metabolic rate (g/day)
+# The metabolic costs per day are mass-dependent, equal to metabolic_rate * (mass_zero_fat * fat_state).
+
+#### Fitness (time, probability of good or bad night) ####
+
+# A season is divided in days, themselves divided in timesteps.
+nb_timesteps <- 70    # Number of time periods per day (where nb_timesteps+1 is the beginning of daytime)
+nb_days <- 153   # Number of days in summer (where nb_days+1 is the start of winter)
+
+# Environmental stochasticity (bad or good day) affects daily metabolic costs.
+cost_good_day  <- 0.48  # Metabolic cost of a good day (g)
+cost_bad_day  <- 1.20  # Metabolic cost of a bad day (g)
+probability_bad_day  <- 0.167 # Probability of a bad day
+
+#### Temperature, predation risk and prey availability functions ####
+
+#Temperature in degrees celsius, affects prey availability and metabolic cost
+get_temperature <- function(time_current){
+  temperature_current <- 23.58 + 2.363*time_current - 0.1514*time_current^2 + 0.002846*time_current^3 - 0.00001642*time_current^4
+  return(temperature_current)
+}
+curve(expr = get_temperature, from = 1, to = nb_timesteps)
+
+#Prey availability
+#not yet implemented: less then 2 == 0, over 18 == max
+get_prey <- function(temperature_current){
+  reward_prey_current <- 0.0001378 + 0.006198*temperature_current - 0.01368* temperature_current^2 + 0.008669* temperature_current^3 - 0.002148* temperature_current^4 + 0.0002774* temperature_current^5 - 0.00001864* temperature_current^6 + 0.000000618* temperature_current^7 - 0.000000008012* temperature_current^8
+  return(reward_prey_current)
+}
+curve(expr = get_prey, from = 0, to = 20)
+
+reward_prey<-get_prey(0:20)
+
+#Predation
+#we are using existing data for this, rather than calculating it
+risk_predation <- predationdata[,5]
+plot(risk_predation)
+#it is still advantageous to make a function that can retrieve a predation risk value based on timestep
+get_predation <- function(time_current){
+  predation_current <- risk_predation[time_current]
+  return(predation_current)
+}
+curve(expr = get_predation, from = 1, to = nb_timesteps)
 
 
-#---- Actions (costs and rewards) ---- 
-# Defining decision-related variables.
-# Bats can choose between a maximum of three actions: forage, roost (no torpor), roost (torpor).
-# These are coded as i = [1, 2, 3] 
-# Each patch (H[i]) has a different energy cost denoted by mu (due to metabolism).
-# Each patch also has a different energetic gain denoted by e (in practice only the foraging patch leads to an energetic gain).
+#make dataframe that stores timestep and corresponding prey availability
+patch1 <- rep(0, times = nb_timesteps)
+patch2 <- rep(0, times = nb_timesteps)
+patch3 <- seq(1, nb_timesteps, by=1)
+patch3 <- get_prey(get_temperature(patch3))
+prey_availability_all <- data.frame(patch1, patch2, patch3)
+rm(patch1)
+rm(patch2)
+rm(patch3)
 
-mu <- c(0, 0.001, 0.005)  # Basic daily predation risk per patch (/day) 
-e  <- c(0, 0.6, 2.0)      # Net daily forage inntake for patch 1/2 (g/day)
-
-#The following value is to be changed
-lambda <- 0.46     # Increase in predation risk due to body mass (/g fat reserves)
-
-# The metabolic costs per day are also mass-dependent, equal to gamma * (m0 * x), 
-# where m0 is the mass of the bat with zero fat reserves (defined above)
-
-#The following value is to be changed
-gamma  <- 0.04     # Metabolic rate (g/day)
+#make dataframe that stores timestep and corresponding predation risk
+patch1 <- rep(0, times = nb_timesteps)
+patch2 <- rep(0, times = nb_timesteps)
+patch3 <- seq(1, nb_timesteps, by=1)
+patch3 <- get_predation(patch3)
+predation_risk_all <- data.frame(patch1, patch2, patch3)
+rm(patch1)
+rm(patch2)
+rm(patch3)
 
 
-#---- Fitness (time, probability of good or bad night)---- 
-# Summer consists of 153 days (Days) and each day is divided into 48 time steps (Time). 
-# We can account for this with a nested loop (see backwards iteration below). 
-# Environmental stochasticity arises from daily metabolic costs. 
-# A bad day has a higher metabolic costs (c_b) and occurs with probability p_b
-# A good day has a lower metabolic cost (c_g) and occurs with probability 1-p_b
+#---- Empty arrays (do not change) ----
+# We make an empty array to hold the fitness values  
+fitness <- array(data = NA, dim = c(length(fat_discretized), nb_timesteps+1, nb_days), 
+                 dimnames = list(fat_discretized, 1:(nb_timesteps+1), 1:(nb_days)) )
 
-Time <- 72    # Number of time periods per day (where time+1 is the beginning of daytime) - eventually use 70
-Days <- 153   # Number of days in summer (where days+1 is the start of winter)
-c_g  <- 0.48  # Metabolic cost of a good day (g)
-c_b  <- 1.20  # Metabolic cost of a bad day (g)
-p_b  <- 0.167 # Probability of a bad day
+# And for the decision loop (patch choice)
+patch_choice <- array(data = NA, dim = c(length(fat_discretized), nb_timesteps, nb_days), dimnames = list(
+  fat_discretized, 1:nb_timesteps, 1:nb_days))
 
-# Recall that terminal fitness is the probability of surviving the summer (i.e. d+1)
-# We can calculate it using equation 5.1 in C&M
 
-# First, an empty array to hold fitness values from the loop
-Fit<- array(data = NA, dim = c(length(x_d), Time+1, Days), 
-             dimnames = list(x_d, 1:(Time+1), 1:(Days)) )
+#---- Functions (do not change) ----
+#### Calculating terminal fitness at the end of each day####
+# Terminal fitness is the probability of surviving the last day (i.e. day_current+1)
 
-# Calculate terminal fitness F(x, t+1, d) where x=state 
-for (j in 1:length(x_d)) {
-  # Note: I use j as the index of an x-value in x_d and x 
-  # as the value of x_d[j].
-  x <- x_d[j]
-  # If your state does not allow you to survive a good day,
-  # survival is impossible and your fitness is zero. 
-  if (x < c_g) {
-    Fit[j, Time+1, Days] <- 0
-  # If your state allows you to survive a good day, but not a bad one,
-  # you survive with probability p_g=1-p_b (the probability of a good night). 
-  } else if (x < c_b) {
-    Fit[j, Time+1, Days] <- (1-p_b)
-  # If your state allows you to survive a bad day, you will always survive
-  # i.e. your probability of survival is 1. 
-  } else {
-    Fit[j, Time+1, Days] <- 1
-  } # end if-else loop
-} # end for loop
+#This function calculates the survival probability at a given state, when at the end of the night
+#Is the individual fat enough to survive a bad day, a good day only, or not even a good day?
+  calculate_survival_proba <- function(fat_state) {
+    if (fat_state < cost_good_day) {
+      survival_proba <- 0
+    } else if (fat_state < cost_bad_day) {
+      survival_proba <- (1-probability_bad_day)
+    } else {
+      survival_proba <- 1
+    }
+    return(survival_proba)
+  }
+  
 
-#taking a look at the
-#as.matrix(Fit[, Time+1, Days])
 
-# The left column shows state, the right column shows the terminal fitness we just calculated. 
-# To survive a good day requires 0.48 g of fat reserves.
-# When x < 0.48 the bat dies (it cannot survive the best-case scenario). 
-# To survive a bad day requires 1.2 g of fat reserves. 
-# When 0.48 < x < 1.2 the probability of survival =  1-p_b = 0.833
-# When x > 1.2 (the cost of a bad day), the bird always survives (probability =1)
+# Calculate terminal fitness F(fat_state, timestep_current+1, day_current), for every day, where fat_state=state
+# This for loop can be replaced by apply for cleaner code
+for (j in 1:length(fat_discretized)) {
+  fat_state <- fat_discretized[j]
+    fitness[j, nb_timesteps+1, nb_days] <- calculate_survival_proba(fat_state)
+}
+rm(j)
 
-#---- Discrete state variable (interpolation function) ----
+  
+# Visualise the state and corresponding terminal fitness
+#as.matrix(fitness[, nb_timesteps+1, nb_days])
+
+#---- Interpolating the discrete state variable ----
 # The computer discretizes the state variable 
 # but in reality energetic reserves is a continuous variable. 
 # We overcome this using interpolation (see C&M 2.1)
 
-interpolate <- function (x, t, d) {
+interpolate <- function (fat_state, timestep_current, day_current) {
   
-  # Returns the index of the closest discrete x value 
-  closest_discrete_x <- function(x) {
+  # Returns the index of the closest discrete fat_state value 
+  closest_discrete_x <- function(fat_state) {
     # Note: only the first value is returned if there are multiple 
     # equidistant values.
-    return(which(abs(x_d - x) == min(abs(x_d - x)))[1])
+    return(which(abs(fat_discretized - fat_state) == min(abs(fat_discretized - fat_state)))[1])
   }
   
   # Interpolate between two values a and b. dx is a value between 0 and 1.
@@ -118,209 +156,166 @@ interpolate <- function (x, t, d) {
   
   # No point in doing interpolation if energy reserves are negative.
   # Bird is dead.
-  if (x < 0) { return(0) }
+  if (fat_state < 0) { return(0) }
   
-  # Figure out between which two discretized values of x our x lies.
-  closest <- closest_discrete_x(x)
-  if (x < x_d[closest]) {
+  # Figure out between which two discretized values of fat_state our fat_state lies.
+  closest <- closest_discrete_x(fat_state)
+  if (fat_state < fat_discretized[closest]) {
     j1 <- closest -1
     j2 <- closest
-  } else if (x > x_d[closest]){
+  } else if (fat_state > fat_discretized[closest]){
     j1 <- closest
     j2 <- closest +1
   } 
-  # Fitness value for x is already present in the matrix. No need to interpolate.
-  else { return( Fit[closest, t, d]) }
+  # Fitness value for fat_state is already present in the matrix. No need to interpolate.
+  else { return( fitness[closest, timestep_current, day_current]) }
   
-  # Calculate how x is positioned in relation to x_d[j1] and x_d[j2].
-  # 0: Closer to x_d[j1]
-  # 1: Closer to x_d[j2]
-  delta_x <- (x-x_d[j1])/(x_d[j2]-x_d[j1])
+  # Calculate how fat_state is positioned in relation to fat_discretized[j1] and fat_discretized[j2].
+  # 0: Closer to fat_discretized[j1]
+  # 1: Closer to fat_discretized[j2]
+  delta_x <- (fat_state-fat_discretized[j1])/(fat_discretized[j2]-fat_discretized[j1])
   
   # Interpolate.
-  return(linear_interpolation(Fit[j1, t, d], Fit[j2, t, d], delta_x))
+  return(linear_interpolation(fitness[j1, timestep_current, day_current], fitness[j2, timestep_current, day_current], delta_x))
 }
-
-#---- Temperature, predation risk and prey availability functions ----
-
-#Temperature in degrees celsius, affects prey availability and metabolic cost
-temperature <- function(currenttime){
-  currenttemperature <- 23.58 + 2.363*currenttime - 0.1514*currenttime^2 + 0.002846*currenttime^3 - 0.00001642*currenttime^4
-  return(currenttemperature)
-}
-curve(expr = temperature, from = 1, to = Time)
-
-#Prey availability
-#less then 2 == 0
-fpreyavailability <- function(currenttemperature){
- currentpreyavailability <- 0.0001378 + 0.006198*currenttemperature - 0.01368* currenttemperature^2 + 0.008669* currenttemperature^3 - 0.002148* currenttemperature^4 + 0.0002774* currenttemperature^5 - 0.00001864* currenttemperature^6 + 0.000000618* currenttemperature^7 - 0.000000008012* currenttemperature^8
-  return(currentpreyavailability)
-}
-curve(expr = preyavailability, from = 0, to = 20)
-
-preyavailability<-preyavailability(0:20)
-
-#Predation
-predationrisk <- predationdata[,5]
-plot(predationrisk)
-
-
-#put these all together for all 3 patches
-#maybe this should be its own function?
-#make empty dataframe, 3 columns, Time rows
-
-#we need to pick a currenttime
-currenttime=1
-
-#patches 1 and 2  have 0 prey and predation
 
 # ---- Backwards Iteration ---- 
 
-# We already have a blank array for the fitness loop
-# Create one for the decision loop (patch choice, H)
-H <- array(data = NA, dim = c(length(x_d), Time, Days), dimnames = list(
-  x_d, 1:Time, 1:Days))
 
-# Iterate backwards across days at Time+1
-for (d in Days:1) {
+
+# Iterate backwards across days at nb_timesteps+1
+for (day_current in nb_days:1) {
   # Terminal fitness has already been calculated, 
   # so don't calculate fitness for T+1 on the last day.
-  if (d != Days) {
-    for (j in 1:length(x_d)) {
-      x <- x_d[j]
+  if (day_current != nb_days) {
+    for (j in 1:length(fat_discretized)) {
+      fat_state <- fat_discretized[j]
       
       # Equation 5.2
       # Notice we use the interpolation function here
       # If a bird can't survive a good night... 
-      if (x < c_g) {
-        Fit[j, Time+1, d] <- 0      # Bird is dead, it just doesn't know it yet.
+      if (fat_state < cost_good_day) {
+        fitness[j, nb_timesteps+1, day_current] <- 0      # Bird is dead, it just doesn't know it yet.
         
         # If a bird can survive a good night but not a bad night
         # its probability of survival = probability of a good night 
         # times its state (reward) after you subtract the overnight energetic cost
-      } else if (x < c_b) {
-        Fit[j, Time+1, d] <- (1-p_b)*interpolate(x-c_g, 1, d+1)  
+      } else if (fat_state < cost_bad_day) {
+        fitness[j, nb_timesteps+1, day_current] <- (1-probability_bad_day)*interpolate(fat_state-cost_good_day, 1, day_current+1)  
         
-        # Otherwise is can survive a bad night, in which case
+        # Otherwise it can survive a bad night, in which case
         # fitness = prob. of a good night*state after a good night + 
         # prob. of a bad night * state after a bad night
         # this follows the same logic as the HK model
       } else {
-        Fit[j, Time+1, d] <- (1-p_b)*interpolate(x-c_g, 1, d+1) +
-          p_b*interpolate(x-c_b, 1, d+1)  #prob of good night*state after good night plus same for bad night
+        fitness[j, nb_timesteps+1, day_current] <- (1-probability_bad_day)*interpolate(fat_state-cost_good_day, 1, day_current+1) +
+          probability_bad_day*interpolate(fat_state-cost_bad_day, 1, day_current+1)  #prob of good night*state after good night plus same for bad night
       }
     } # end if-else loop
   } # end j loop
   
-  # Iterate backwards from max Time for each day
-  for (t in Time:1) {
-    for (j in 1:length(x_d)) {
-      x <- x_d[j]
+  # Iterate backwards from max nb_timesteps for each day
+  for (timestep_current in nb_timesteps:1) {
+    for (j in 1:length(fat_discretized)) {
+      fat_state <- fat_discretized[j]
       # Vector for storing fitness values for each of the three patches.
-      F_i <- vector(mode = 'numeric', length=3)
+      fitness_all_choices <- vector(mode = 'numeric', length=3)
       
       # Calculate resulting fitness of choosing each patch
       # Equation 5.4
-    
-
+      
+      
       
       for (i in 1:3) {
         # Equation 5.4
         # Calculating the expected state in the future.
-        #This is where we insert the prey value, instead of e. It should not be divided by Time in our calculation, as it is already per time step.
+        #This is where we insert the prey value, instead of foraging_benefit. It should not be divided by nb_timesteps in our calculation, as it is already per time step.
         #for the prey value, we should probably make an array for each 3 patches and then for each time step
-        x_mark <- ( x + e[i,t] - ((1/Time)* gamma*(m_0+x)) )
-        #instead of the old one:
-        # x_mark <- ( x + (1/Time)*(e[i] - gamma*(m_0+x)) )
+        # fat_expected <- ( fat_state + foraging_benefit[i] - ((1/nb_timesteps)* metabolic_rate*(mass_zero_fat+fat_state)) )
+        # instead of the old one:
+        fat_expected <- ( fat_state + (1/nb_timesteps)*(foraging_benefit[i] - metabolic_rate*(mass_zero_fat+fat_state)) )
         
-        # Ensure that x_mark does not exceed x_max.
-        x_mark <- min(c(x_max, x_mark))
+        # Ensure that fat_expected does not exceed fat_max.
+        fat_expected <- min(c(fat_max, fat_expected))
         
-        # Plug x_mark (5.4) into equation 5.3
+        # Plug fat_expected (5.4) into equation 5.3
         # Calculate the expected fitness given patch choice h.
-#And this is where we insert the predation value instead of mu.
+        # And this is where we insert the predation value instead of predation_risk.
         # i.e: Chance of surviving time expected future fitness in this patch.
-        F_i[i] <- (1 - (1/Time)*(mu[i]*exp(lambda*x)) ) *interpolate(x_mark, t+1, d)
+        fitness_all_choices[i] <- (1 - (1/nb_timesteps)*(predation_risk[i]*exp(predation_risk_increase*fat_state)) ) *interpolate(fat_expected, timestep_current+1, day_current)
       } # end i loop 
       
       # Which patch choice maximizes fitness?
-      Fit[j, t, d] <- max(F_i)[1]
+      fitness[j, timestep_current, day_current] <- max(fitness_all_choices)[1]
       
       # Optimal patch choice is the one that maximizes fitness.
       # In cases where more than one patch shares the same fitness, 
       # the first one (i.e. lower risk) is chosen.
-      H[j, t, d] <- which(F_i == max(F_i))[1]
+      patch_choice[j, timestep_current, day_current] <- which(fitness_all_choices == max(fitness_all_choices))[1]
       
     } # end j loop 
-  } # end t loop
-} # end d loop
+  } # end timestep_current loop
+} # end day_current loop
 
 # We can explore the decision matrix at different days, similar to Fig 5.2
 # Keeping in mind that our output shows a reverse order on the y-axis
-H[,,100] 
+patch_choice[,,100] 
 #DONE#
 
-#--- Plots! ----
+#--- Plots ----
 
 ####Fitness function####
-# Fitness function at two different times on day Days-20, t=25 and t=49 respectively.
+# Fitness function at two different times on day nb_days-20, timestep_current=25 and timestep_current=49 respectively.
 # This figure should be equivalent to 5.1 in Clark and Mangel (1999).
 
 # Create an empty plot for plotting lines.
 plot(NA, type="n", 
      xlab="Fat reserves (g)",
-     ylab="Fitness, F[x, t]", 
-     xlim=c(0, x_max), ylim=c(0, 1))
+     ylab="Fitness, F[fat_state, timestep_current]", 
+     xlim=c(0, fat_max), ylim=c(0, 1))
 
 # Plotting the lines.
-lines(x_d, as.vector(Fit[,25,Days-20]), col = "black", lty = 3)
-lines(x_d, as.vector(Fit[,49,Days-20]), col = "black", lty = 1)
+lines(fat_discretized, as.vector(fitness[,25,nb_days-20]), col = "black", lty = 3)
+lines(fat_discretized, as.vector(fitness[,49,nb_days-20]), col = "black", lty = 1)
 
 
 # Reverse the x-dimension of the array so it is ordered from high to low. 
 # Nicer when plotting.
-Fit.rev <- Fit[length(x_d):1,,]
-H.rev <-   H  [length(x_d):1,,]
+fitness_reversed <- fitness[length(fat_discretized):1,,]
+patch_choice_reversed <-   patch_choice  [length(fat_discretized):1,,]
 ####Optimal decision plot####
 # Plotting the optimal decision at any given time.
 # black:  Patch 1 (0)
 # yellow: Patch 2 (1)
 # red:    Patch 3 (2)
 # Should be equivalent to Figure 5.2 in Clark and Mangel (1999).
-plot(H.rev[,,Days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"),
-     xlab = "Time of day",
+plot(patch_choice_reversed[,,nb_days-20], breaks=c(0.5, 1.5, 2.5, 3.5), col=c("black", "yellow", "red"),
+     xlab = "nb_timesteps of day",
      ylab = "Fat reserves",
-     )
+)
 
-#for more flexibility I'd like to reshape the decision matrix into a long format dataframe. fat reserves, time of day and decision as columns.
+#for more flexibility I will reshape the decision matrix into a long format dataframe. fat reserves, time of day and decision as columns.
 #first, let's convert the array into a dataframe
-optimaldecision<-as.data.frame(H.rev)
+optimaldecision <- as.data.frame(patch_choice_reversed)
 optimaldecision <- cbind(rownames(optimaldecision), data.frame(optimaldecision, row.names=NULL, check.names=FALSE, stringsAsFactors=FALSE))
 colnames(optimaldecision)[1] = 'fatreserves'
 #now we do the reshaping using the tidy package (part of the tidyverse)
 optimaldecision <- gather(optimaldecision,time,decision,-fatreserves)
-#let's round the fat reserve numbers to something more sensible
-fatreserves <- as.character(optimaldecision$fatreserves)
-round(optimaldecision$fatreserves,digits=4)
-#we can now plot using ggplot2
-p <-ggplot(optimaldecision,aes(time,fatreserves,fill=decision))+
-  geom_tile() + 
-  scale_fill_viridis(name="Hrly Temps C",option ="C")
-p
-
+#we can now plot our values
 
 
 
 ####Fitness plot####
-plot(Fit.rev[,,Days-20],
+plot(fitness_reversed[,,nb_days-20],
      xlab = "Time of day",
      ylab = "Fat reserves")
 
 #### Fitness landscape plot####
-persp3D(z = Fit.rev[,,Days-20], theta = 135, phi = 45,
-        xlab = "State (x)", 
-        ylab = "Time (t)",
-        zlab = "Fitness (F)")
+persp3D(z = fitness_reversed[,,nb_days-20], theta = 135, phi = 45,
+        xlab = "State (fat_state)", 
+        ylab = "Timestep (timestep_current)",
+        zlab = "Fitness (fitness)")
+
 
 
 
@@ -329,73 +324,73 @@ persp3D(z = Fit.rev[,,Days-20], theta = 135, phi = 45,
 # looking at the fate of individuals in the model).
 
 # Number of days to forward iterate for.
-Days  <- 120
+nb_days_forward  <- 120
 
-# Time/day is given from the model above.
+# nb_timesteps/day is given from the model above.
 
-# Initial states for individual (A vector of indecies in x_d).
-j_0 <- 1 # seq(from=1, to = length(x_d), by = 20)
+# Initial states for individual (A vector of indices in fat_discretized).
+state_init_forward <- 1 # seq(from=1, to = length(fat_discretized), by = 20)
 
-# Number of individuals to iterate for each x_0. Total number of individuals
-# is length(x_0)*N.ind:
-N.ind <- 500
+# Number of individuals to iterate for each state_init_forward_discretized. Total number of individuals
+# is length(state_init_forward_discretized)*nb_indiv_forward:
+nb_indiv_forward <- 500
 
-# X[j_0, N, D, T]:
-# State of individual N with initial state j_0, at day D and time T.
+# state_forward_all[state_init_forward, N, D, T]:
+# State of individual N with initial state state_init_forward, at day D and time T.
 
-X <- array(data = NA, dim = c(length(j_0), N.ind, Days*Time +1), dimnames = list(
-  x_d[j_0],
-  1:N.ind,
-  1:(Days*Time+1)
+state_forward_all <- array(data = NA, dim = c(length(state_init_forward), nb_indiv_forward, nb_days_forward*nb_timesteps +1), dimnames = list(
+  fat_discretized[state_init_forward],
+  1:nb_indiv_forward,
+  1:(nb_days_forward*nb_timesteps+1)
 ))
 
-for (j in 1:length(j_0)) {
-  x_0 <- x_d[j_0[j]]
-  for (n in 1:N.ind) {
+for (j in 1:length(state_init_forward)) {
+  state_init_forward_discretized <- fat_discretized[state_init_forward[j]]
+  for (n in 1:nb_indiv_forward) {
     # Set the initial state.
-    X[j, n, 1] <- x_0
+    state_forward_all[j, n, 1] <- state_init_forward_discretized
     
     # Iterate through the time.
-    for (z in 1:(Days*Time) ) {
-      t = (z-1) %%  Time  +1 # Time of day
-      d = (z-1) %/% Time  +1 # Day
+    for (z in 1:(nb_days_forward*nb_timesteps) ) {
+      timestep_current = (z-1) %%  nb_timesteps  +1 # nb_timesteps of day
+      day_current = (z-1) %/% nb_timesteps  +1 # Day
       # The current state.
-      x <- X[j, n, z]
-      if (x < 0) {
+      fat_state <- state_forward_all[j, n, z]
+      if (fat_state < 0) {
         # Bird is dead. It will remain dead.
-        x_new <- x
+        state_new_forward <- fat_state
       } else {
-        # The best decision given the current state (Found by rounding x to the closest item
-        # in x_d).
+        # The best decision given the current state (Found by rounding fat_state to the closest item
+        # in fat_discretized).
         # TODO: interpolate the decision between the two closest optimal decisions.
-        h <- H[which(abs(x_d - x) == min(abs(x_d - x)))[1], t, d]
+        h <- patch_choice[which(abs(fat_discretized - fat_state) == min(abs(fat_discretized - fat_state)))[1], timestep_current, day_current]
         
-        if (runif(1) <= (1/Time)*mu[h]*exp(lambda*x)) { # Predation risk.
-          # Negative x = dead.
-          x_new <- -1
+        if (runif(1) <= (1/nb_timesteps)*predation_risk[h]*exp(predation_risk_increase*fat_state)) { # Predation risk.
+          # Negative fat_state = dead.
+          state_new_forward <- -1
         } else {
-          metabolism <- (1/Time)*gamma*(m_0+x)
-          foraging   <- (1/Time)*e[h]
+          metabolism <- (1/nb_timesteps)*metabolic_rate*(mass_zero_fat+fat_state)
+          foraging   <- (1/nb_timesteps)*foraging_benefit[h]
           
-          x_new <- x + foraging - metabolism
+          state_new_forward <- fat_state + foraging - metabolism
         }
       }
       
-      if (t == Time) {
+      if (timestep_current == nb_timesteps) {
         # If it is the end of the day, nightly costs need to be applied as well.
-        if (runif(1) < p_b) {
+        if (runif(1) < probability_bad_day) {
           # Bad night.
-          x_new <- x_new - c_b
+          state_new_forward <- state_new_forward - cost_bad_day
         } else {
           # Good night.
-          x_new <- x_new - c_g
+          state_new_forward <- state_new_forward - cost_good_day
         }
         
         # Set the state for the start of the following day.
       } 
       
       # Set new state.
-      X[j, n, z+1] <- x_new
+      state_forward_all[j, n, z+1] <- state_new_forward
     }
   }
 }
@@ -408,36 +403,36 @@ for (j in 1:length(j_0)) {
 
 # Create an empty plot, with the necessary xlim and ylim.
 plot(NA, type="n", 
-     xlab="Time",
-     ylab="Fat reserves (g)", xlim=c(1, (Days*Time +1)), ylim=c(0, x_max))
+     xlab="Timestep",
+     ylab="Fat reserves (g)", xlim=c(1, (nb_days_forward*nb_timesteps +1)), ylim=c(0, fat_max))
 
 
 # Horizontal lines to indicate cost of good and bad night respectively.
-abline(h=c_g, col = "blue", lty = 3)
-abline(h=c_b, col = "blue", lty = 1)
+abline(h=cost_good_day, col = "blue", lty = 3)
+abline(h=cost_bad_day, col = "blue", lty = 1)
 
-# Plot each individual for the chosen x_0.
-for (n in 1:N.ind) {
-  lines(1:(Days*Time +1), X[1, n, ], col = "black")
+# Plot each individual for the chosen state_init_forward_discretized.
+for (n in 1:nb_indiv_forward) {
+  lines(1:(nb_days_forward*nb_timesteps +1), state_forward_all[1, n, ], col = "black")
 }
 
 # Plot vertical lines to indicate position of the night.
-for (i in 1:Days) {
-  abline(v=i*Time, col = "red", lty = 3)
+for (i in 1:nb_days_forward) {
+  abline(v=i*nb_timesteps, col = "red", lty = 3)
 }
 
 # Calculate the proportion of individuals still alive at the start 
 # of each day.
 
 alive = data.frame(day = NULL, n_alive = NULL, p_alive = NULL)
-for (d in 1:(Days+1)) {
+for (day_current in 1:(nb_days_forward+1)) {
   
-  tmp <- data.frame(day = d,
-                    n_alive = length(which(as.vector(X[1, , (d-1)*Time +1]) >= 0))
+  tmp <- data.frame(day = day_current,
+                    n_alive = length(which(as.vector(state_forward_all[1, , (day_current-1)*nb_timesteps +1]) >= 0))
                     
                     
   )
-  tmp$p_alive <- tmp$n_alive/N.ind
+  tmp$p_alive <- tmp$n_alive/nb_indiv_forward
   
   alive <- rbind(alive, tmp)
 }
@@ -446,13 +441,8 @@ for (d in 1:(Days+1)) {
 # at the beginning of each day.
 plot(NA, type="n", 
      xlab="Day",
-     ylab="Proportion alive", xlim=c(1, Days+1), ylim=c(0, 1))
+     ylab="Proportion alive", xlim=c(1, nb_days_forward+1), ylim=c(0, 1))
 
 lines(alive$day, alive$p_alive)
 
-####END####
-
-
-
-
-
+###END###
