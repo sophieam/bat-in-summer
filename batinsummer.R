@@ -15,21 +15,12 @@ library(viridis) # colourblind palette
 
 predationdata<-read.csv("Data/PredationAndForagingEquation.csv")
 
-##### State (fat reserves) ####
+#### State (fat reserves) ####
 mass_zero_fat    <- 10    # Mass of bat with zero fat reserves (g)
 fat_max  <- 2.4   # Maximum fat reserves (g) (NOT mass of bat with max fat reserves!)
 fat_discretized    <- seq(from = 0, to = fat_max, 
               length.out=100)   # Discretized values of fat_state
-
-##### Actions (metabolic costs and rewards) #####
-# Bats can choose between a maximum of three 'patches': roost (torpor), roost (no torpor), forage.
-# Each patch (patch_choice[i]) has a different predation risk and energetic gain.
-
-predation_risk <- c(0, 0.001, 0.005)  # Basic daily predation risk per patch (/day) 
-foraging_benefit  <- c(0, 0.6, 2.0)      # Net daily forage inntake for patch 1/2 (g/day)
 predation_risk_increase <- 0.46     # Increase in predation risk due to body mass (/g fat reserves)
-metabolic_rate  <- 0.04     # Metabolic rate (g/day)
-# The metabolic costs per day are mass-dependent, equal to metabolic_rate * (mass_zero_fat * fat_state).
 
 #### Fitness (time, probability of good or bad night) ####
 
@@ -44,41 +35,70 @@ probability_bad_day  <- 0.167 # Probability of a bad day
 
 #### Temperature, predation risk and prey availability functions ####
 
-#Temperature in degrees celsius, affects prey availability and metabolic cost
+#External temperature in degrees celsius, affects prey availability
 get_temperature <- function(time_current){
-  temperature_current <- 23.58 + 2.363*time_current - 0.1514*time_current^2 + 0.002846*time_current^3 - 0.00001642*time_current^4
+  temperature_current <- 17.45 + 1.101*time_current - 0.05206*time_current^2 + 0.0007522*time_current^3 - 0.000003164*time_current^4
   return(temperature_current)
 }
 curve(expr = get_temperature, from = 1, to = nb_timesteps)
 
-#Prey availability
-#not yet implemented: less then 2 == 0, over 18 == max
-get_prey <- function(temperature_current){
-  reward_prey_current <- 0.0001378 + 0.006198*temperature_current - 0.01368* temperature_current^2 + 0.008669* temperature_current^3 - 0.002148* temperature_current^4 + 0.0002774* temperature_current^5 - 0.00001864* temperature_current^6 + 0.000000618* temperature_current^7 - 0.000000008012* temperature_current^8
-  return(reward_prey_current)
+#Roost temperature in degrees celsius, affects metabolism for patches 1 and 2
+get_temperature_roost <- function(time_current){
+  temperature_roost_current <- 22.92 + 2.180*time_current - 0.1382*time_current^2 + 0.002574*time_current^3 - 0.00001465*time_current^4
+  return(temperature_roost_current)
 }
+curve(expr = get_temperature_roost, from = 1, to = nb_timesteps)
+
+
+
+#Prey availability
+#changed to a logistic function for robustness
+get_prey <- function(temperature_current){
+    reward_prey_current <- 1 / (1 + exp( -0.524* (temperature_current - 11)))
+    # reward_prey_current <- 0.0001378 + 0.006198*temperature_current - 0.01368* temperature_current^2 + 0.008669* temperature_current^3 - 0.002148* temperature_current^4 + 0.0002774* temperature_current^5 - 0.00001864* temperature_current^6 + 0.000000618* temperature_current^7 - 0.000000008012* temperature_current^8
+   return(reward_prey_current)
+ }
+
 curve(expr = get_prey, from = 0, to = 20)
 
-reward_prey<-get_prey(0:20)
+# the following is useful to compare the two functions, just uncomment back to the old function above before running this
+# logistic = function(L, k, x0, x) L / (1 + exp( -k* (x - x0)))
+# plot(logistic(1, 0.524, 11, 0:20), type="l")
+# preytemp <- 2:18
+# get_prey(preytemp)
+# logistic(1, 0.524, 11, preytemp)
+# sum(abs(get_prey(preytemp)-logistic(1, 0.524, 11, preytemp)))
+# plot(get_prey(preytemp)-logistic(1, 0.524, 11, preytemp))
 
 #Predation
 #we are using existing data for this, rather than calculating it
+
 risk_predation <- predationdata[,5]
 plot(risk_predation)
-#it is still advantageous to make a function that can retrieve a predation risk value based on timestep
+
 get_predation <- function(time_current){
   predation_current <- risk_predation[time_current]
   return(predation_current)
 }
-curve(expr = get_predation, from = 1, to = nb_timesteps)
 
+#...but we could make a normal distribution instead? here is an attempt although too leptokurtic
+# get_predation <- function(time_current){
+#   mu <- nb_timesteps/2
+#   sigm <- 5
+#   e <- exp(1)
+#   x <- time_current
+#   predation_current <- 1-((1/(sigm*(sqrt(2*pi))))*e^(-((x-mu)^2)/(2*sigm^2))*12.5)
+#   return(predation_current)
+# }
+
+test <- curve(expr = get_predation, from = 1, to = nb_timesteps)
 
 #make dataframe that stores timestep and corresponding prey availability
 patch1 <- rep(0, times = nb_timesteps)
 patch2 <- rep(0, times = nb_timesteps)
 patch3 <- seq(1, nb_timesteps, by=1)
 patch3 <- get_prey(get_temperature(patch3))
-prey_availability_all <- data.frame(patch1, patch2, patch3)
+foraging_benefit <- data.frame(patch1, patch2, patch3)
 rm(patch1)
 rm(patch2)
 rm(patch3)
@@ -88,11 +108,19 @@ patch1 <- rep(0, times = nb_timesteps)
 patch2 <- rep(0, times = nb_timesteps)
 patch3 <- seq(1, nb_timesteps, by=1)
 patch3 <- get_predation(patch3)
-predation_risk_all <- data.frame(patch1, patch2, patch3)
+predation_risk <- data.frame(patch1, patch2, patch3)
 rm(patch1)
 rm(patch2)
 rm(patch3)
 
+#make one for metabolic cost per patch; remember that patch 3 is foraging outdoors and uses external temperature
+patch1 <- rep(0, times = nb_timesteps)
+patch2 <- rep(0, times = nb_timesteps)
+patch3 <- rep(0, times = nb_timesteps)
+metabolic_cost_all <- data.frame(patch1, patch2, patch3)
+rm(patch1)
+rm(patch2)
+rm(patch3)
 
 #---- Empty arrays (do not change) ----
 # We make an empty array to hold the fitness values  
@@ -222,18 +250,13 @@ for (day_current in nb_days:1) {
       fitness_all_choices <- vector(mode = 'numeric', length=3)
       
       # Calculate resulting fitness of choosing each patch
-      # Equation 5.4
-      
-      
-      
       for (i in 1:3) {
         # Equation 5.4
         # Calculating the expected state in the future.
-        #This is where we insert the prey value, instead of foraging_benefit. It should not be divided by nb_timesteps in our calculation, as it is already per time step.
-        #for the prey value, we should probably make an array for each 3 patches and then for each time step
-        # fat_expected <- ( fat_state + foraging_benefit[i] - ((1/nb_timesteps)* metabolic_rate*(mass_zero_fat+fat_state)) )
+        # New calculation, not divided per timesteps as the values already are per timestep:
+        fat_expected <- ( fat_state + foraging_benefit[timestep_current,i] - metabolic_cost_all[timestep_current,i]*(mass_zero_fat+fat_state))
         # instead of the old one:
-        fat_expected <- ( fat_state + (1/nb_timesteps)*(foraging_benefit[i] - metabolic_rate*(mass_zero_fat+fat_state)) )
+        #fat_expected <- ( fat_state + (1/nb_timesteps)*(foraging_benefit[timestep_current,i] - metabolic_rate*(mass_zero_fat+fat_state)) )
         
         # Ensure that fat_expected does not exceed fat_max.
         fat_expected <- min(c(fat_max, fat_expected))
@@ -242,7 +265,7 @@ for (day_current in nb_days:1) {
         # Calculate the expected fitness given patch choice h.
         # And this is where we insert the predation value instead of predation_risk.
         # i.e: Chance of surviving time expected future fitness in this patch.
-        fitness_all_choices[i] <- (1 - (1/nb_timesteps)*(predation_risk[i]*exp(predation_risk_increase*fat_state)) ) *interpolate(fat_expected, timestep_current+1, day_current)
+        fitness_all_choices[i] <- (1 - (predation_risk[timestep_current,i]*exp(predation_risk_increase*fat_state)) ) *interpolate(fat_expected, timestep_current+1, day_current)
       } # end i loop 
       
       # Which patch choice maximizes fitness?
@@ -259,8 +282,8 @@ for (day_current in nb_days:1) {
 
 # We can explore the decision matrix at different days, similar to Fig 5.2
 # Keeping in mind that our output shows a reverse order on the y-axis
-patch_choice[,,100] 
-#DONE#
+#patch_choice[,,100] 
+#END OF BACKWARDS ITERATION#
 
 #--- Plots ----
 
@@ -365,12 +388,12 @@ for (j in 1:length(state_init_forward)) {
         # TODO: interpolate the decision between the two closest optimal decisions.
         h <- patch_choice[which(abs(fat_discretized - fat_state) == min(abs(fat_discretized - fat_state)))[1], timestep_current, day_current]
         
-        if (runif(1) <= (1/nb_timesteps)*predation_risk[h]*exp(predation_risk_increase*fat_state)) { # Predation risk.
+        if (runif(1) <= predation_risk[timestep_current,h]*exp(predation_risk_increase*fat_state)) { # Predation risk.
           # Negative fat_state = dead.
           state_new_forward <- -1
         } else {
-          metabolism <- (1/nb_timesteps)*metabolic_rate*(mass_zero_fat+fat_state)
-          foraging   <- (1/nb_timesteps)*foraging_benefit[h]
+          metabolism <- metabolic_cost_all[timestep_current,h]*(mass_zero_fat+fat_state)
+          foraging   <- foraging_benefit[timestep_current,h]
           
           state_new_forward <- fat_state + foraging - metabolism
         }
@@ -394,6 +417,13 @@ for (j in 1:length(state_init_forward)) {
     }
   }
 }
+
+rm(h)
+rm(i)
+rm(j)
+rm(z)
+
+#END OF FORWARD ITERATION#
 
 ####Forward iteration survival plot####
 ## The below plots multiple individuals on the same plot.
@@ -437,6 +467,9 @@ for (day_current in 1:(nb_days_forward+1)) {
   alive <- rbind(alive, tmp)
 }
 
+rm(n)
+rm(i)
+
 # Plotting the proportion of individuals that are still alive 
 # at the beginning of each day.
 plot(NA, type="n", 
@@ -445,4 +478,4 @@ plot(NA, type="n",
 
 lines(alive$day, alive$p_alive)
 
-###END###
+###END OF SCRIPT###
