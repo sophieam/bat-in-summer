@@ -16,10 +16,10 @@ library(viridis) # colourblind palette
 predationdata<-read.csv("Data/PredationAndForagingEquation.csv")
 
 #### State (fat reserves) ####
-mass_zero_fat    <- 10    # Mass of bat with zero fat reserves (g)
-fat_max  <- 2.4   # Maximum fat reserves (g) (NOT mass of bat with max fat reserves!)
-fat_discretized    <- seq(from = 0, to = fat_max, 
-              length.out=100)   # Discretized values of fat_state
+#the original bird values are commented out
+mass_zero_fat    <- 7 #10    # Mass of bat with zero fat reserves (g)
+fat_max  <- 7 #2.4   # Maximum fat reserves (g) (NOT mass of bat with max fat reserves!)
+fat_discretized    <- seq(from = 0, to = fat_max, length.out=100)   # Discretized values of fat_state
 predation_risk_increase <- 0.46     # Increase in predation risk due to body mass (/g fat reserves)
 
 #### Fitness (time, probability of good or bad night) ####
@@ -27,13 +27,17 @@ predation_risk_increase <- 0.46     # Increase in predation risk due to body mas
 # A season is divided in days, themselves divided in timesteps.
 nb_timesteps <- 70    # Number of time periods per day (where nb_timesteps+1 is the beginning of daytime)
 nb_days <- 153   # Number of days in summer (where nb_days+1 is the start of winter)
+nb_hours <- 24 #Number of hours in a day (e.g. 12 or 24). Used later to calculate mebabolic cost per timestep instead of per hour.
+
+#Metabolic costs
+cost_flight_hourly <- 0.615  #Hourly cost of flight in g
 
 # Environmental stochasticity (bad or good day) affects daily metabolic costs.
 cost_good_day  <- 0.48  # Metabolic cost of a good day (g)
 cost_bad_day  <- 1.20  # Metabolic cost of a bad day (g)
 probability_bad_day  <- 0.167 # Probability of a bad day
 
-#### Temperature, predation risk and prey availability functions ####
+#### Temperature, predation risk, prey availability and metabolism functions ####
 
 #External temperature in degrees celsius, affects prey availability
 get_temperature <- function(time_current){
@@ -49,26 +53,13 @@ get_temperature_roost <- function(time_current){
 }
 curve(expr = get_temperature_roost, from = 1, to = nb_timesteps)
 
-
-
 #Prey availability
-#changed to a logistic function for robustness
 get_prey <- function(temperature_current){
     reward_prey_current <- 1 / (1 + exp( -0.524* (temperature_current - 11)))
-    # reward_prey_current <- 0.0001378 + 0.006198*temperature_current - 0.01368* temperature_current^2 + 0.008669* temperature_current^3 - 0.002148* temperature_current^4 + 0.0002774* temperature_current^5 - 0.00001864* temperature_current^6 + 0.000000618* temperature_current^7 - 0.000000008012* temperature_current^8
-   return(reward_prey_current)
+    return(reward_prey_current)
  }
 
 curve(expr = get_prey, from = 0, to = 20)
-
-# the following is useful to compare the two functions, just uncomment back to the old function above before running this
-# logistic = function(L, k, x0, x) L / (1 + exp( -k* (x - x0)))
-# plot(logistic(1, 0.524, 11, 0:20), type="l")
-# preytemp <- 2:18
-# get_prey(preytemp)
-# logistic(1, 0.524, 11, preytemp)
-# sum(abs(get_prey(preytemp)-logistic(1, 0.524, 11, preytemp)))
-# plot(get_prey(preytemp)-logistic(1, 0.524, 11, preytemp))
 
 #Predation
 #we are using existing data for this, rather than calculating it
@@ -93,6 +84,20 @@ get_predation <- function(time_current){
 
 test <- curve(expr = get_predation, from = 1, to = nb_timesteps)
 
+#Metabolism, transform the hourly cost into a per timestep cost
+standardize_metabo_cost <- function(cost_hourly){
+  fraction <- nb_hours/nb_timesteps
+  cost <- cost_hourly*fraction
+  return(cost)
+}
+
+#Calculate metabolism per timestep, torpor (patch 1)
+
+#Calculate metabolism per timestep, resting (patch 2)
+
+#Calculate metabolism per timestep, foraging (patch 3)
+cost_flight <- standardize_metabo_cost(cost_flight_hourly)
+
 #make dataframe that stores timestep and corresponding prey availability
 patch1 <- rep(0, times = nb_timesteps)
 patch2 <- rep(0, times = nb_timesteps)
@@ -116,7 +121,7 @@ rm(patch3)
 #make one for metabolic cost per patch; remember that patch 3 is foraging outdoors and uses external temperature
 patch1 <- rep(0, times = nb_timesteps)
 patch2 <- rep(0, times = nb_timesteps)
-patch3 <- rep(0, times = nb_timesteps)
+patch3 <- rep(cost_flight, times = nb_timesteps)
 metabolic_cost_all <- data.frame(patch1, patch2, patch3)
 rm(patch1)
 rm(patch2)
