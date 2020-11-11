@@ -91,11 +91,41 @@ standardize_metabo_cost <- function(cost_hourly){
   return(cost)
 }
 
-#Calculate metabolism per timestep, torpor (patch 1)
+#Calculate metabolism per hour, torpor (patch 1)
+#Energy expenditure for torpor, per bat with 0 extra fat per hour
+get_cost_torpor_hourly <- function(temperature_current){
+  if(temperature_current>33){
+    cost_torpor_hourly<- 1
+  }
+  else{
+    cost_torpor_hourly<- 0.0008^(0.0862*temperature_current*mass_zero_fat)
+    }
+  return(cost_torpor_hourly)
+}
+get_cost_torpor_hourly <- Vectorize(get_cost_torpor_hourly, vectorize.args = "temperature_current")
+curve(expr = get_cost_torpor_hourly, from = 0, to = 40)
+#the following is the cost per timestep as the temperature changes over a day
+plot(standardize_metabo_cost(get_cost_torpor_hourly(get_temperature(1:nb_timesteps))))
 
-#Calculate metabolism per timestep, resting (patch 2)
+#Calculate metabolism per hour, resting (patch 2)
+#Energy expenditure for resting, per bat with 0 extra fat per hour
+get_cost_resting_hourly <- function(temperature_current){
+  if(temperature_current>33){
+    cost_resting_hourly<- 0.0045*mass_zero_fat
+  }
+  else{
+    cost_resting_hourly<- 0.0443-(0.0012*temperature_current*mass_zero_fat)
+    }
+  return(cost_resting_hourly)
+}
+get_cost_resting_hourly <- Vectorize(get_cost_resting_hourly, vectorize.args = "temperature_current")
+curve(expr = get_cost_resting_hourly, from = 0, to = 40)
+#the following is the cost per timestep as the temperature changes over a day
+plot(standardize_metabo_cost(get_cost_resting_hourly(get_temperature(1:nb_timesteps))))
 
-#Calculate metabolism per timestep, foraging (patch 3)
+#Calculate metabolism per timestep
+#torpor
+#resting
 cost_flight <- standardize_metabo_cost(cost_flight_hourly)
 
 #make dataframe that stores timestep and corresponding prey availability
@@ -118,9 +148,10 @@ rm(patch1)
 rm(patch2)
 rm(patch3)
 
-#make one for metabolic cost per patch; remember that patch 3 is foraging outdoors and uses external temperature
-patch1 <- rep(0, times = nb_timesteps)
-patch2 <- rep(0, times = nb_timesteps)
+#make dataframe for metabolic cost per patch
+#values for patch1 and patch2 are the cost per timestep as the temperature changes over a day
+patch1 <- standardize_metabo_cost(get_cost_torpor_hourly(get_temperature(1:nb_timesteps)))
+patch2 <- standardize_metabo_cost(get_cost_resting_hourly(get_temperature(1:nb_timesteps)))
 patch3 <- rep(cost_flight, times = nb_timesteps)
 metabolic_cost_all <- data.frame(patch1, patch2, patch3)
 rm(patch1)
