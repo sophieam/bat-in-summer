@@ -44,14 +44,27 @@ get_temperature <- function(time_current){
   temperature_current <- 17.45 + 1.101*time_current - 0.05206*time_current^2 + 0.0007522*time_current^3 - 0.000003164*time_current^4
   return(temperature_current)
 }
-curve(expr = get_temperature, from = 1, to = nb_timesteps)
+tempgraph <- data.frame(time=1:nb_timesteps, temperature=get_temperature(1:nb_timesteps))
+ggplot(data=tempgraph, aes(x=time, y=temperature))+
+  geom_line()+
+  labs(x='Timestep', y='External temperature (C)',
+  title='External temperature at a given time of the day')+
+  theme_bw()
+rm(tempgraph)
 
 #Roost temperature in degrees celsius, affects metabolism for patches 1 and 2
 get_temperature_roost <- function(time_current){
   temperature_roost_current <- 22.92 + 2.180*time_current - 0.1382*time_current^2 + 0.002574*time_current^3 - 0.00001465*time_current^4
   return(temperature_roost_current)
 }
-curve(expr = get_temperature_roost, from = 1, to = nb_timesteps)
+
+tempgraph <- data.frame(time=1:nb_timesteps, temperature=get_temperature_roost(1:nb_timesteps))
+ggplot(data=tempgraph, aes(x=time, y=temperature))+
+  geom_line()+
+  labs(x='Timestep', y='Roost temperature (C)',
+       title='Roost temperature at a given time of the day')+
+  theme_bw()
+rm(tempgraph)
 
 #Prey availability
 get_prey <- function(temperature_current){
@@ -59,13 +72,25 @@ get_prey <- function(temperature_current){
     return(reward_prey_current)
  }
 
-curve(expr = get_prey, from = 0, to = 20)
+tempgraph <- data.frame(temperature=1:30, prey=get_prey(1:30))
+ggplot(data=tempgraph, aes(x=temperature, y=prey))+
+  geom_line()+
+  labs(x='External temperature', y='Prey availability (0 to 1)',
+       title='Availability of prey based on external temperature')+
+  theme_bw()
+rm(tempgraph)
 
 #Predation
 #we are using existing data for this, rather than calculating it
 
 risk_predation <- predationdata[,5]
-plot(risk_predation)
+tempgraph <- data.frame(timestep=1:72, predation=risk_predation)
+ggplot(data=tempgraph, aes(x=timestep, y=predation))+
+  geom_line()+
+  labs(x='Timestep', y='Predation risk',
+       title='Predation risk over a single day')+
+  theme_bw()
+rm(tempgraph)
 
 get_predation <- function(time_current){
   predation_current <- risk_predation[time_current]
@@ -82,7 +107,6 @@ get_predation <- function(time_current){
 #   return(predation_current)
 # }
 
-test <- curve(expr = get_predation, from = 1, to = nb_timesteps)
 
 #Metabolism, transform the hourly cost into a per timestep cost
 standardize_metabo_cost <- function(cost_hourly){
@@ -93,40 +117,76 @@ standardize_metabo_cost <- function(cost_hourly){
 
 #Calculate metabolism per hour, torpor (patch 1)
 #Energy expenditure for torpor, per bat with 0 extra fat per hour
-get_cost_torpor_hourly <- function(temperature_current){
-  if(temperature_current>33){
-    cost_torpor_hourly<- 10
+get_cost_torpor_hourly <- function(temperature_roost_current){
+  if(temperature_roost_current>33){
+    cost_torpor_hourly<- 5
   }
   else{
-    cost_torpor_hourly<- (0.0008^(0.0862*temperature_current))*mass_zero_fat
+    cost_torpor_hourly<- (0.0008^(0.0862*temperature_roost_current))*mass_zero_fat
     }
   return(cost_torpor_hourly)
 }
-get_cost_torpor_hourly <- Vectorize(get_cost_torpor_hourly, vectorize.args = "temperature_current")
+get_cost_torpor_hourly <- Vectorize(get_cost_torpor_hourly, vectorize.args = "temperature_roost_current")
 curve(expr = get_cost_torpor_hourly, from = 0, to = 40)
-#the following is the cost per timestep as the temperature changes over a day
-plot(standardize_metabo_cost(get_cost_torpor_hourly(get_temperature(1:nb_timesteps))))
+#the following is the cost per timestep as the roost temperature changes over a day
+plot(standardize_metabo_cost(get_cost_torpor_hourly(get_temperature_roost(1:nb_timesteps))))
+
+temptable <- get_cost_torpor_hourly(1:40)
+tempgraph <- data.frame(temperature=1:40, metabolism=temptable)
+ggplot(data=tempgraph, aes(x=temperature, y=metabolism))+
+  geom_line()+
+  labs(x='Roost temperature (C)', y='Metabolic cost per g per hour (g)',
+       title='Metabolic cost of torpor based on roost temperature')+
+  theme_bw()
+rm(tempgraph)
+rm(temptable)
+
+temptable <- standardize_metabo_cost(get_cost_torpor_hourly(get_temperature_roost(1:nb_timesteps)))
+tempgraph <- data.frame(timestep=1:nb_timesteps, metabolism=temptable)
+ggplot(data=tempgraph, aes(x=timestep, y=metabolism))+
+  geom_line()+
+  labs(x='Timestep', y='Metabolic cost per g per timestep (g)',
+       title='Metabolic cost of torpor based on timestep')+
+  theme_bw()
+rm(tempgraph)
+rm(temptable)
+
 
 #Calculate metabolism per hour, resting (patch 2)
 #Energy expenditure for resting, per bat with 0 extra fat per hour
-get_cost_resting_hourly <- function(temperature_current){
-  if(temperature_current>33){
+get_cost_resting_hourly <- function(temperature_roost_current){
+  if(temperature_roost_current>33){
     cost_resting_hourly<- 0.0045*mass_zero_fat
   }
   else{
-    cost_resting_hourly<- 0.0443*mass_zero_fat-(0.0012*temperature_current*mass_zero_fat)
+    cost_resting_hourly<- 0.0443*mass_zero_fat-(0.0012*temperature_roost_current*mass_zero_fat)
     }
   return(cost_resting_hourly)
 }
-get_cost_resting_hourly <- Vectorize(get_cost_resting_hourly, vectorize.args = "temperature_current")
+get_cost_resting_hourly <- Vectorize(get_cost_resting_hourly, vectorize.args = "temperature_roost_current")
 curve(expr = get_cost_resting_hourly, from = 0, to = 40)
 #the following is the cost per timestep as the temperature changes over a day
-plot(standardize_metabo_cost(get_cost_resting_hourly(get_temperature(1:nb_timesteps))))
+plot(standardize_metabo_cost(get_cost_resting_hourly(get_temperature_roost(1:nb_timesteps))))
 
-#Calculate metabolism per timestep
-#torpor
-#resting
-cost_flight <- standardize_metabo_cost(cost_flight_hourly)
+temptable <- get_cost_resting_hourly(1:40)
+tempgraph <- data.frame(temperature=1:40, metabolism=temptable)
+ggplot(data=tempgraph, aes(x=temperature, y=metabolism))+
+  geom_line()+
+  labs(x='Roost temperature (C)', y='Metabolic cost per g per hour (g)',
+       title='Metabolic cost of resting based on roost temperature')+
+  theme_bw()
+rm(tempgraph)
+rm(temptable)
+
+temptable <- standardize_metabo_cost(get_cost_resting_hourly(get_temperature_roost(1:nb_timesteps)))
+tempgraph <- data.frame(timestep=1:nb_timesteps, metabolism=temptable)
+ggplot(data=tempgraph, aes(x=timestep, y=metabolism))+
+  geom_line()+
+  labs(x='Timestep', y='Metabolic cost per g per timestep (g)',
+       title='Metabolic cost of resting based on timestep')+
+  theme_bw()
+rm(tempgraph)
+rm(temptable)
 
 #make dataframe that stores timestep and corresponding prey availability
 patch1 <- rep(0, times = nb_timesteps)
@@ -152,11 +212,29 @@ rm(patch3)
 #values for patch1 and patch2 are the cost per timestep as the temperature changes over a day
 patch1 <- standardize_metabo_cost(get_cost_torpor_hourly(get_temperature(1:nb_timesteps)))
 patch2 <- standardize_metabo_cost(get_cost_resting_hourly(get_temperature(1:nb_timesteps)))
-patch3 <- rep(cost_flight, times = nb_timesteps)
+patch3 <- rep(standardize_metabo_cost(cost_flight_hourly), times = nb_timesteps)
 metabolic_cost_all <- data.frame(patch1, patch2, patch3)
 rm(patch1)
 rm(patch2)
 rm(patch3)
+
+patch1 <- cbind(1:nb_timesteps, rep(1, times = nb_timesteps), standardize_metabo_cost(get_cost_torpor_hourly(get_temperature(1:nb_timesteps))))
+patch2 <- cbind(1:nb_timesteps, rep(2, times = nb_timesteps), standardize_metabo_cost(get_cost_resting_hourly(get_temperature(1:nb_timesteps))))
+patch3 <- cbind(1:nb_timesteps, rep(3, times = nb_timesteps), rep(standardize_metabo_cost(cost_flight_hourly), times = nb_timesteps))
+rowpatch <- rbind(patch1,patch2,patch3)
+metabolic_cost_allgraph <- data.frame(rowpatch)
+colnames(metabolic_cost_allgraph) = c('timestep', 'patch', 'metabolism')
+rm(patch1)
+rm(patch2)
+rm(patch3)
+rm(rowpatch)
+
+ggplot(data=metabolic_cost_allgraph, aes(x=timestep, y=metabolism, group=patch, color=patch))+
+  geom_line()+
+  labs(x='Timestep', y='Metabolic cost per g per timestep (g)',
+       title='Metabolic cost for each patch for each timestep')+
+  theme_bw()
+rm(tempgraph)
 
 #---- Empty arrays (do not change) ----
 # We make an empty array to hold the fitness values  
