@@ -95,10 +95,10 @@ standardize_metabo_cost <- function(cost_hourly){
 #Energy expenditure for torpor, per bat with 0 extra fat per hour
 get_cost_torpor_hourly <- function(temperature_current){
   if(temperature_current>33){
-    cost_torpor_hourly<- 1
+    cost_torpor_hourly<- 10
   }
   else{
-    cost_torpor_hourly<- 0.0008^(0.0862*temperature_current*mass_zero_fat)
+    cost_torpor_hourly<- (0.0008^(0.0862*temperature_current))*mass_zero_fat
     }
   return(cost_torpor_hourly)
 }
@@ -114,7 +114,7 @@ get_cost_resting_hourly <- function(temperature_current){
     cost_resting_hourly<- 0.0045*mass_zero_fat
   }
   else{
-    cost_resting_hourly<- 0.0443-(0.0012*temperature_current*mass_zero_fat)
+    cost_resting_hourly<- 0.0443*mass_zero_fat-(0.0012*temperature_current*mass_zero_fat)
     }
   return(cost_resting_hourly)
 }
