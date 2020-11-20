@@ -18,9 +18,9 @@ predationdata<-read.csv("Data/PredationAndForagingEquation.csv")
 #### State (fat reserves) ####
 #the original bird values are commented out
 mass_zero_fat    <- 7 #10    # Mass of bat with zero fat reserves (g)
-fat_max  <- 7 #2.4   # Maximum fat reserves (g) (NOT mass of bat with max fat reserves!)
-fat_discretized    <- seq(from = 0, to = fat_max, length.out=100)   # Discretized values of fat_state
-predation_risk_increase <- 0.46     # Increase in predation risk due to body mass (/g fat reserves)
+fat_max  <- 3 #2.4   # Maximum fat reserves (g) (NOT mass of bat with max fat reserves!)
+fat_discretized    <- seq(from = 0, to = fat_max, length.out=20)   # Discretized values of fat_state; lower length means faster script!
+predation_risk_increase <- 0.01   #0.46  # Increase in predation risk due to body mass (/g fat reserves)
 
 #### Fitness (time, probability of good or bad night) ####
 
@@ -39,12 +39,22 @@ probability_bad_day  <- 0.167 # Probability of a bad day
 
 #### Temperature, predation risk, prey availability and metabolism functions ####
 
+tnz <- 25 #thermoneutral zone in degrees celsius, used to calculate metabolic costs of torpor and resting
+bmr <- 0.0045*mass_zero_fat #basal metabolic rate, used to calculate metabolic cost of resting
+
+weather <- 'sunny' #weather on that day (sunny or cloudy); affects the output of the get_temperature_XXX functions
+
 #External temperature in degrees celsius, affects prey availability
-get_temperature <- function(time_current){
-  temperature_current <- 17.45 + 1.101*time_current - 0.05206*time_current^2 + 0.0007522*time_current^3 - 0.000003164*time_current^4
-  return(temperature_current)
+get_temperature_ext <- function(time_current){
+  if (weather == 'sunny') {
+  temperature_ext_current <- 17.45 + 1.101*time_current - 0.05206*time_current^2 + 0.0007522*time_current^3 - 0.000003164*time_current^4
+  }  else  {
+    temperature_ext_current <- 0 #insert equation for cloudy weather here
+  }
+  return(temperature_ext_current)
 }
-tempgraph <- data.frame(time=1:nb_timesteps, temperature=get_temperature(1:nb_timesteps))
+
+tempgraph <- data.frame(time=1:nb_timesteps, temperature=get_temperature_ext(1:nb_timesteps))
 ggplot(data=tempgraph, aes(x=time, y=temperature))+
   geom_line()+
   labs(x='Timestep', y='External temperature (C)',
@@ -54,7 +64,11 @@ rm(tempgraph)
 
 #Roost temperature in degrees celsius, affects metabolism for patches 1 and 2
 get_temperature_roost <- function(time_current){
-  temperature_roost_current <- 22.92 + 2.180*time_current - 0.1382*time_current^2 + 0.002574*time_current^3 - 0.00001465*time_current^4
+  if (weather == 'sunny') {
+    temperature_roost_current <- 22.92 + 2.180*time_current - 0.1382*time_current^2 + 0.002574*time_current^3 - 0.00001465*time_current^4
+  }  else  {
+    temperature_roost_current <- 0 #insert equation for cloudy weather here
+  }
   return(temperature_roost_current)
 }
 
@@ -67,10 +81,11 @@ ggplot(data=tempgraph, aes(x=time, y=temperature))+
 rm(tempgraph)
 
 #Prey availability
-get_prey <- function(temperature_current){
-    reward_prey_current <- 1 / (1 + exp( -0.524* (temperature_current - 11)))
+get_prey <- function(temperature_ext_current){
+    reward_prey_current <- 1 / (1 + exp( -0.524* (temperature_ext_current - 11)))
     return(reward_prey_current)
  }
+
 
 tempgraph <- data.frame(temperature=1:30, prey=get_prey(1:30))
 ggplot(data=tempgraph, aes(x=temperature, y=prey))+
@@ -83,8 +98,8 @@ rm(tempgraph)
 #Predation
 #we are using existing data for this, rather than calculating it
 
-risk_predation <- predationdata[,5]
-tempgraph <- data.frame(timestep=1:72, predation=risk_predation)
+risk_predation_baseline <- predationdata[,5]
+tempgraph <- data.frame(timestep=1:72, predation=risk_predation_baseline)
 ggplot(data=tempgraph, aes(x=timestep, y=predation))+
   geom_line()+
   labs(x='Timestep', y='Predation risk',
@@ -92,8 +107,25 @@ ggplot(data=tempgraph, aes(x=timestep, y=predation))+
   theme_bw()
 rm(tempgraph)
 
+
+#graph of predation risk by fat reserves, for a given timestep
+predation_risk_fat <- data.frame (timestep = rep(1:nb_timesteps, each = length(fat_discretized)), fat = rep(fat_discretized, times = nb_timesteps))
+#get predation baseline for the time column, and multiple by the exp of the risk increase based on fat reserves
+#the formula:
+#risk_predation_baseline[1:nb_timesteps,1]*exp(predation_risk_increase*fat_state))
+predation_risk_fat_graph <- cbind(predation_risk_fat, risk_predation_baseline[predation_risk_fat[,'timestep']]*exp(predation_risk_increase*predation_risk_fat[,'fat']))
+colnames(predation_risk_fat_graph) = c('timestep', 'fat', 'predation')
+subset(predation_risk_fat_graph, timestep==40)
+
+ ggplot(data=subset(predation_risk_fat_graph, timestep==40), aes(x=predation, y=fat))+
+   geom_point()+
+   labs(y='Fat reserves', x='Predation risk',
+        title='Fat reserves and predation risk at timestep 40')+
+   theme_bw()
+ rm(predation_risk_fat_graph)
+
 get_predation <- function(time_current){
-  predation_current <- risk_predation[time_current]
+  predation_current <- risk_predation_baseline[time_current]
   return(predation_current)
 }
 
@@ -118,11 +150,11 @@ standardize_metabo_cost <- function(cost_hourly){
 #Calculate metabolism per hour, torpor (patch 1)
 #Energy expenditure for torpor, per bat with 0 extra fat per hour
 get_cost_torpor_hourly <- function(temperature_roost_current){
-  if(temperature_roost_current>33){
-    cost_torpor_hourly<- 5
+  if(temperature_roost_current>tnz){
+    cost_torpor_hourly <- 1
   }
   else{
-    cost_torpor_hourly<- (0.0008^(0.0862*temperature_roost_current))*mass_zero_fat
+    cost_torpor_hourly <- (0.0008^(0.0862*temperature_roost_current))*mass_zero_fat
     }
   return(cost_torpor_hourly)
 }
@@ -155,11 +187,11 @@ rm(temptable)
 #Calculate metabolism per hour, resting (patch 2)
 #Energy expenditure for resting, per bat with 0 extra fat per hour
 get_cost_resting_hourly <- function(temperature_roost_current){
-  if(temperature_roost_current>33){
-    cost_resting_hourly<- 0.0045*mass_zero_fat
+  if(temperature_roost_current>tnz){
+    cost_resting_hourly <- bmr
   }
   else{
-    cost_resting_hourly<- 0.0443*mass_zero_fat-(0.0012*temperature_roost_current*mass_zero_fat)
+    cost_resting_hourly <- 0.0443*mass_zero_fat-(0.0012*temperature_roost_current*mass_zero_fat)
     }
   return(cost_resting_hourly)
 }
@@ -192,7 +224,7 @@ rm(temptable)
 patch1 <- rep(0, times = nb_timesteps)
 patch2 <- rep(0, times = nb_timesteps)
 patch3 <- seq(1, nb_timesteps, by=1)
-patch3 <- get_prey(get_temperature(patch3))
+patch3 <- standardize_metabo_cost((get_prey(get_temperature_ext(patch3)))*5)
 foraging_benefit <- data.frame(patch1, patch2, patch3)
 rm(patch1)
 rm(patch2)
@@ -203,23 +235,24 @@ patch1 <- rep(0, times = nb_timesteps)
 patch2 <- rep(0, times = nb_timesteps)
 patch3 <- seq(1, nb_timesteps, by=1)
 patch3 <- get_predation(patch3)
-predation_risk <- data.frame(patch1, patch2, patch3)
+risk_predation_all <- data.frame(patch1, patch2, patch3)
 rm(patch1)
 rm(patch2)
 rm(patch3)
 
 #make dataframe for metabolic cost per patch
 #values for patch1 and patch2 are the cost per timestep as the temperature changes over a day
-patch1 <- standardize_metabo_cost(get_cost_torpor_hourly(get_temperature(1:nb_timesteps)))
-patch2 <- standardize_metabo_cost(get_cost_resting_hourly(get_temperature(1:nb_timesteps)))
+patch1 <- standardize_metabo_cost(get_cost_torpor_hourly(get_temperature_roost(1:nb_timesteps)))
+patch2 <- standardize_metabo_cost(get_cost_resting_hourly(get_temperature_roost(1:nb_timesteps)))
 patch3 <- rep(standardize_metabo_cost(cost_flight_hourly), times = nb_timesteps)
 metabolic_cost_all <- data.frame(patch1, patch2, patch3)
 rm(patch1)
 rm(patch2)
 rm(patch3)
 
-patch1 <- cbind(1:nb_timesteps, rep(1, times = nb_timesteps), standardize_metabo_cost(get_cost_torpor_hourly(get_temperature(1:nb_timesteps))))
-patch2 <- cbind(1:nb_timesteps, rep(2, times = nb_timesteps), standardize_metabo_cost(get_cost_resting_hourly(get_temperature(1:nb_timesteps))))
+#the following is for the graph and can be removed without breaking the script
+patch1 <- cbind(1:nb_timesteps, rep(1, times = nb_timesteps), standardize_metabo_cost(get_cost_torpor_hourly(get_temperature_roost(1:nb_timesteps))))
+patch2 <- cbind(1:nb_timesteps, rep(2, times = nb_timesteps), standardize_metabo_cost(get_cost_resting_hourly(get_temperature_roost(1:nb_timesteps))))
 patch3 <- cbind(1:nb_timesteps, rep(3, times = nb_timesteps), rep(standardize_metabo_cost(cost_flight_hourly), times = nb_timesteps))
 rowpatch <- rbind(patch1,patch2,patch3)
 metabolic_cost_allgraph <- data.frame(rowpatch)
@@ -228,13 +261,15 @@ rm(patch1)
 rm(patch2)
 rm(patch3)
 rm(rowpatch)
-
-ggplot(data=metabolic_cost_allgraph, aes(x=timestep, y=metabolism, group=patch, color=patch))+
-  geom_line()+
+ggplot(data=metabolic_cost_allgraph, aes(x=timestep, y=metabolism, group=factor(patch), color=factor(patch)))+
+  geom_point()+
   labs(x='Timestep', y='Metabolic cost per g per timestep (g)',
        title='Metabolic cost for each patch for each timestep')+
+  scale_colour_discrete(name="Patch",
+                      breaks=c("1", "2", "3"),
+                      labels=c("Torpor", "Resting", "Foraging"))+
   theme_bw()
-rm(tempgraph)
+rm(metabolic_cost_allgraph)
 
 #---- Empty arrays (do not change) ----
 # We make an empty array to hold the fitness values  
@@ -379,7 +414,7 @@ for (day_current in nb_days:1) {
         # Calculate the expected fitness given patch choice h.
         # And this is where we insert the predation value instead of predation_risk.
         # i.e: Chance of surviving time expected future fitness in this patch.
-        fitness_all_choices[i] <- (1 - (predation_risk[timestep_current,i]*exp(predation_risk_increase*fat_state)) ) *interpolate(fat_expected, timestep_current+1, day_current)
+        fitness_all_choices[i] <- (1 - (risk_predation_all[timestep_current,i]*exp(predation_risk_increase*fat_state)) ) *interpolate(fat_expected, timestep_current+1, day_current)
       } # end i loop 
       
       # Which patch choice maximizes fitness?
@@ -453,6 +488,7 @@ persp3D(z = fitness_reversed[,,nb_days-20], theta = 135, phi = 45,
         ylab = "Timestep (timestep_current)",
         zlab = "Fitness (fitness)")
 
+###END OF BACKWARDS ITERATION####
 
 
 
@@ -502,7 +538,7 @@ for (j in 1:length(state_init_forward)) {
         # TODO: interpolate the decision between the two closest optimal decisions.
         h <- patch_choice[which(abs(fat_discretized - fat_state) == min(abs(fat_discretized - fat_state)))[1], timestep_current, day_current]
         
-        if (runif(1) <= predation_risk[timestep_current,h]*exp(predation_risk_increase*fat_state)) { # Predation risk.
+        if (runif(1) <= risk_predation_all[timestep_current,h]*exp(predation_risk_increase*fat_state)) { # Predation risk.
           # Negative fat_state = dead.
           state_new_forward <- -1
         } else {
